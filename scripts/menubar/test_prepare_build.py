@@ -80,7 +80,7 @@ class BuildPreparationTests(unittest.TestCase):
         self.assertNotIn("com.apple.security.application-groups", entitlements)
         self.assertNotIn("keychain-access-groups", entitlements)
         framework_script = (self.root / "scripts/configure_frameworks.sh").read_text()
-        self.assertIn("CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM=", framework_script)
+        self.assertIn("MACOSX_DEPLOYMENT_TARGET=12.0 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM=", framework_script)
 
     def test_refuses_missing_invalid_official_and_test_credentials_before_editing(self):
         cases = [None, {}, {"api_id": 9, "api_hash": "b" * 32}, {"api_id": 17349, "api_hash": "b" * 32}, {"api_id": True, "api_hash": "b" * 32}, {"api_id": 2**31, "api_hash": "b" * 32}, {"api_id": 123456789, "api_hash": "secret"}, {"api_id": 123456789, "api_hash": "0" * 32}]

@@ -148,7 +148,7 @@ def prepare(root, credentials, source_commit):
     framework_marker = "-configuration Release BUILD_LIBRARY_FOR_DISTRIBUTION=YES"
     if framework_text.count(framework_marker) != 1:
         raise ValueError("La commande de compilation des bibliothèques natives a changé")
-    framework_text = framework_text.replace(framework_marker, framework_marker + " CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM=")
+    framework_text = framework_text.replace(framework_marker, framework_marker + " MACOSX_DEPLOYMENT_TARGET=12.0 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM=")
     marker = root / ".menubar-build"
     if marker.exists():
         raise ValueError("Cette préparation a déjà été appliquée ; utilisez une nouvelle préparation isolée")

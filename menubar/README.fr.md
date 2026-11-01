@@ -93,7 +93,9 @@ le profil officiel et sa sauvegarde sont conservés pour permettre un retour en 
 La compilation est d’abord non signée, puis signée localement de façon ad hoc, sans notarisation Apple.
 macOS peut donc demander une autorisation d’ouverture ou d’accès au conteneur pendant la migration.
 Si le système refuse la lecture du profil App Store, le script doit s’arrêter avant de fermer Telegram.
-Accorder au terminal qui exécute le script l’accès demandé par macOS, puis relancer la même livraison.
+Sous macOS 27, l’accès aux données d’autres apps est refusé par défaut et peut se régler dans
+**Confidentialité et sécurité > Fichiers et dossiers > Terminal**. Autoriser l’accès aux données de Telegram
+si cette entrée est proposée, puis relancer la même livraison. Ne pas attendre systématiquement une popup.
 Ne pas déplacer le profil d’origine ni modifier ses droits pour contourner ce contrôle.
 
 ## Proxy et Proton
@@ -152,6 +154,17 @@ Après un lancement du fork, une version plus récente peut avoir modifié le fo
 Pour revenir en arrière, quitter les applications, conserver le profil courant à part, puis restaurer
 l’application et son profil sauvegardés ensemble. Ne pas fusionner les bases de données ni remplacer
 un profil pendant que Telegram fonctionne. Le profil App Store d’origine reste distinct du profil du fork.
+
+Après correction d’un échec de compilation, une préparation privée existante peut être reprise :
+
+```sh
+TELEGRAM_MENUBAR_RESUME_BUILD=/private/tmp/telegram-menubar-build.ID python3 scripts/menubar/update.py --prepare-only
+```
+
+Remplacer `ID` par le dossier indiqué dans le diagnostic. Cette reprise vérifie le dossier et son dépôt,
+restaure les sources suivies au nouveau commit, régénère les paramètres privés et conserve les caches.
+Les contrôles de dépendances déterminent quelles bibliothèques peuvent être réutilisées. Le double-clic
+normal prépare un nouvel espace isolé ; cette option est destinée à la résolution d’un échec.
 
 Une préparation échouée peut contenir les identifiants intégrés à l’application : conserver ce dossier
 privé et ne partager que des diagnostics relus, sans joindre son contenu complet au dépôt public.

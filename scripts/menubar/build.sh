@@ -33,24 +33,28 @@ if ! mkdir "$lock_dir" 2>/dev/null; then
     exit 1
 fi
 printf '%s\n' "$$" > "$lock_dir/pid"
-build_root="$(mktemp -d /private/tmp/telegram-menubar-build.XXXXXX)"
-chmod 700 "$build_root"
-build_dir="$build_root/source"
+build_root=""
+build_dir=""
 source_commit="$(git -C "$repository_dir" rev-parse HEAD)"
 finished=no
 cleanup() {
-    if [[ "$finished" == yes ]]; then
+    if [[ "$finished" == yes && -n "$build_root" ]]; then
         git -C "$repository_dir" worktree remove --force "$build_dir" || true
         rm -rf "$build_root"
-    else
+    elif [[ -n "$build_root" ]]; then
         echo "Préparation privée et journaux conservés dans : $build_root" >&2
     fi
     rm -f "$lock_dir/pid"
     rmdir "$lock_dir"
 }
 trap cleanup EXIT
+stage_arguments=(--repository "$repository_dir" --source-commit "$source_commit")
+if [[ -n "${TELEGRAM_MENUBAR_RESUME_BUILD:-}" ]]; then
+    stage_arguments+=(--resume "$TELEGRAM_MENUBAR_RESUME_BUILD")
+fi
+build_root="$(python3 "$repository_dir/scripts/menubar/build-stage.py" "${stage_arguments[@]}")"
+build_dir="$build_root/source"
 printf 'Compilation isolée : %s\n' "$build_dir"
-git -C "$repository_dir" worktree add --detach "$build_dir" "$source_commit"
 git -C "$build_dir" -c url.https://github.com/.insteadOf=git@github.com: -c url.https://gitlab.com/.insteadOf=git@gitlab.com: \
     -c submodule.third-party/twidget.update=none -c submodule.third-party/widget-sandbox.update=none \
     submodule update --init --recursive
