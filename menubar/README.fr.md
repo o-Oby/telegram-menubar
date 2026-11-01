@@ -127,6 +127,8 @@ les sous-modules épinglés et compile les bibliothèques natives avant l’appl
 Les sous-modules `third-party/twidget` et `third-party/widget-sandbox`, réservés aux laboratoires
 de performance et absents des dépendances Release, sont exclus de cette préparation.
 Les adaptations Xcode 27 et les identifiants privés sont appliqués dans la préparation isolée.
+Le strip des bibliothèques Rust est désactivé localement pour contourner le défaut de chargement
+[Rust 1.96 sur macOS 27](https://github.com/rust-lang/rust/issues/157750) ; les versions verrouillées sont conservées.
 Un premier `--check` réussi ne signifie donc pas qu’un DMG a déjà été construit.
 
 ## Choix des versions officielles

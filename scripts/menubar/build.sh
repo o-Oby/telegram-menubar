@@ -64,6 +64,8 @@ python3 "$build_dir/tools/tests/menubar-lifecycle/run.py"
 python3 "$build_dir/scripts/menubar/prepare-build.py" --root "$build_dir" --credentials "$credentials_file" --source-commit "$source_commit"
 export CMAKE_POLICY_VERSION_MINIMUM=3.5
 export MACOSX_DEPLOYMENT_TARGET=12.0
+export CARGO_PROFILE_RELEASE_STRIP=none
+export CARGO_PROFILE_DEV_STRIP=none
 bash "$build_dir/scripts/xcode27.sh" apply > "$build_root/compatibility.log" 2>&1
 abseil_file="$build_dir/submodules/tg_owt/src/third_party/abseil-cpp/absl/base/attributes.h"
 if [[ -f "$abseil_file" ]]; then
