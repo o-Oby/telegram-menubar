@@ -3,8 +3,52 @@ from pathlib import Path
 import plistlib
 import tempfile
 import unittest
+from unittest import mock
+import subprocess
+
+import install
 
 import update
+
+
+class UpdateEntryTests(unittest.TestCase):
+    def run_entry(self, receipt=None, arguments=()):
+        with tempfile.TemporaryDirectory(prefix="telegram-entry-test-") as temporary:
+            home = Path(temporary)
+            if receipt is not None:
+                path = home / "Library/Application Support/Telegram Menu Bar/installation-state.json"
+                path.parent.mkdir(parents=True)
+                path.write_text(json.dumps(receipt))
+            destination = home / "delivery"
+            calls = []
+            def run(repository, **options):
+                calls.append(options)
+                if options["install"]:
+                    options["install"](destination)
+                return destination
+            with mock.patch.object(update.Path, "home", return_value=home), mock.patch.object(update.sys, "argv", ["update.py", *arguments]), mock.patch.object(update.subprocess, "run", return_value=subprocess.CompletedProcess([], 0)), mock.patch.object(update, "run_update", side_effect=run), mock.patch.object(install, "install_on_mac") as perform:
+                self.assertEqual(update.main(), 0)
+                return calls[0], perform.call_args
+
+    def test_new_installation_defaults_to_fresh_login(self):
+        options, call = self.run_entry()
+        self.assertIsNone(options["prepared"])
+        self.assertTrue(call.kwargs["fresh"])
+
+    def test_pending_fresh_installation_resumes_same_delivery(self):
+        options, call = self.run_entry({"status": "pending-fresh", "deliveryDirectory": "/fixture/prepared"})
+        self.assertEqual(options["prepared"], "/fixture/prepared")
+        self.assertTrue(call.kwargs["fresh"])
+
+    def test_pending_migration_remains_explicit_existing_path(self):
+        options, call = self.run_entry({"status": "pending-validation", "deliveryDirectory": "/fixture/migration"})
+        self.assertEqual(options["prepared"], "/fixture/migration")
+        self.assertFalse(call.kwargs["fresh"])
+
+    def test_prepare_only_never_installs(self):
+        options, call = self.run_entry(arguments=["--prepare-only"])
+        self.assertIsNone(options["install"])
+        self.assertIsNone(call)
 
 
 class UpdateTests(unittest.TestCase):

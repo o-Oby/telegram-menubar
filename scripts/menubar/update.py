@@ -25,6 +25,18 @@ INSTALLATION_ONLY_PATHS = frozenset({
     "README.md",
     "menubar/README.fr.md",
     "Mettre à jour Telegram Menu Bar.command",
+    "scripts/menubar/initialize_profile.py",
+    "scripts/menubar/test_initialize_profile.py",
+    "scripts/menubar/profile-initializer/LICENSE",
+    "scripts/menubar/profile-initializer/README.md",
+    "scripts/menubar/profile-initializer/main.m",
+    "scripts/menubar/profile-initializer/provenance.json",
+    "scripts/menubar/profile-initializer/vendor/BuildConfig.m",
+    "scripts/menubar/profile-initializer/vendor/Crypto.m",
+    "scripts/menubar/profile-initializer/vendor/MurMurHash32.m",
+    "scripts/menubar/profile-initializer/vendor/include/BuildConfig/BuildConfig.h",
+    "scripts/menubar/profile-initializer/vendor/include/CryptoUtils/Crypto.h",
+    "scripts/menubar/profile-initializer/vendor/include/MurMurHash32/MurMurHash32.h",
 })
 
 
@@ -332,15 +344,18 @@ def main():
         return check.returncode
     from install import install_on_mac
     prepare_only = "--prepare-only" in sys.argv
+    fresh = "--migrate-profile" not in sys.argv
     receipt_path = Path.home() / "Library/Application Support/Telegram Menu Bar/installation-state.json"
     pending = None
     if not prepare_only and receipt_path.exists():
         receipt = json.loads(receipt_path.read_text())
-        if isinstance(receipt, dict) and receipt.get("status") == "pending-validation":
+        if isinstance(receipt, dict) and receipt.get("status") in ["pending-validation", "pending-fresh"]:
             pending = receipt.get("deliveryDirectory")
+            fresh = receipt["status"] == "pending-fresh"
         elif isinstance(receipt, dict) and receipt.get("status") == "validated" and (receipt.get("launchPending") or receipt.get("previousApplication")):
             pending = str(repository / "dist/menubar" / f"v{receipt['version']}-r{receipt['revision']}")
-    destination = run_update(repository, install=None if prepare_only else install_on_mac, prepared=pending)
+    installer = None if prepare_only else lambda directory: install_on_mac(directory, fresh=fresh)
+    destination = run_update(repository, install=installer, prepared=pending)
     subprocess.run(["/usr/bin/open", str(destination)], check=False)
     return 0
 

@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "desktopVersion": "13.1.0",
+  "desktopBuild": "283357",
+  "files": [
+    {
+      "file": "vendor/BuildConfig.m",
+      "repository": "https://github.com/TelegramMessenger/telegram-macos",
+      "commit": "24295527d9122baaf40b467db7d62e44d501ddf7",
+      "path": "submodules/BuildConfig/Sources/BuildConfig.m",
+      "sha256": "11fdb91627ceda61488e381add0e2ac1bdc209ce3381bdc46784932ab81050ff"
+    },
+    {
+      "file": "vendor/include/BuildConfig/BuildConfig.h",
+      "repository": "https://github.com/TelegramMessenger/telegram-macos",
+      "commit": "24295527d9122baaf40b467db7d62e44d501ddf7",
+      "path": "submodules/BuildConfig/Sources/include/BuildConfig/BuildConfig.h",
+      "sha256": "2735607c7bc465c4413860fb652ec5f96d2a9734b848d89ec94fdaf1670609f1"
+    },
+    {
+      "file": "vendor/Crypto.m",
+      "repository": "https://github.com/TelegramMessenger/Telegram-iOS",
+      "commit": "fb0e62ba8a147f0821da6aa63c09da7d79a10111",
+      "path": "submodules/CryptoUtils/Sources/Crypto.m",
+      "sha256": "5ee804de2fcd126a48813f13f961eea901064bf541c45516219a953333afeb5f"
+    },
+    {
+      "file": "vendor/include/CryptoUtils/Crypto.h",
+      "repository": "https://github.com/TelegramMessenger/Telegram-iOS",
+      "commit": "fb0e62ba8a147f0821da6aa63c09da7d79a10111",
+      "path": "submodules/CryptoUtils/PublicHeaders/CryptoUtils/Crypto.h",
+      "sha256": "ddca827cbf37886e9efa6fedaa636cd685a6fa37d9d29fa62ec355f8ff888f95"
+    },
+    {
+      "file": "vendor/MurMurHash32.m",
+      "repository": "https://github.com/TelegramMessenger/Telegram-iOS",
+      "commit": "fb0e62ba8a147f0821da6aa63c09da7d79a10111",
+      "path": "submodules/MurMurHash32/Sources/MurMurHash32.m",
+      "sha256": "dda11ad6fbb06eb55cb454d2cd087353befead966d9c1963a5ba4a398c7680ff"
+    },
+    {
+      "file": "vendor/include/MurMurHash32/MurMurHash32.h",
+      "repository": "https://github.com/TelegramMessenger/Telegram-iOS",
+      "commit": "fb0e62ba8a147f0821da6aa63c09da7d79a10111",
+      "path": "submodules/MurMurHash32/PublicHeaders/MurMurHash32/MurMurHash32.h",
+      "sha256": "bd7a0c45a23e65ef544133935818290e5feefa3572f23a2a8e7174481f377e56"
+    }
+  ]
+}

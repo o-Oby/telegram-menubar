@@ -24,6 +24,7 @@ class FakeHost:
         self.fail_rollback_stop = False
         self.corrupt_profile_copy = False
         self.preview_action = None
+        self.fail_initialization = False
 
     def stage(self, dmg, workspace):
         self.events.append("stage")
@@ -35,6 +36,16 @@ class FakeHost:
         shutil.copytree(source, destination, symlinks=True)
         if self.corrupt_profile_copy and destination.name == "profile" and destination.parent.parent == self.paths.backups:
             (destination / ".tempkeyEncrypted").write_bytes(b"bad")
+
+    def initialize_profile(self, destination):
+        self.events.append(("initialize_profile", str(destination)))
+        destination.mkdir(mode=0o700)
+        if self.fail_initialization:
+            raise RuntimeError("initialisation neuve échouée")
+        (destination / "accounts-metadata").mkdir(mode=0o700)
+        key = destination / ".tempkeyEncrypted"
+        key.write_bytes(b"n" * 64)
+        os.chmod(key, 0o600)
 
     def verify_signature(self, app):
         self.events.append(("verify", str(app)))
@@ -129,8 +140,8 @@ class InstallTests(unittest.TestCase):
         filename.write_bytes(plistlib.dumps(info))
         self.save_delivery()
 
-    def run_install(self):
-        return installer.install_delivery(self.delivery, self.paths, self.host)
+    def run_install(self, fresh=False):
+        return installer.install_delivery(self.delivery, self.paths, self.host, fresh=fresh)
 
     def backups(self):
         return list(self.paths.backups.iterdir()) if self.paths.backups.exists() else []
@@ -138,6 +149,186 @@ class InstallTests(unittest.TestCase):
     def assert_originals(self):
         self.assertEqual(installer.tree_hash(self.paths.installed), self.original_app)
         self.assertEqual(installer.tree_hash(self.paths.original_profile), self.original_profile)
+
+    def test_fresh_install_backs_up_only_application_and_launches_login_without_confirmation(self):
+        receipt = self.run_install(fresh=True)
+        self.assertEqual(receipt["status"], "validated")
+        self.assertEqual(receipt["installationMode"], "fresh")
+        self.assertFalse(receipt["launchPending"])
+        self.assertEqual(installer.app_info(self.paths.installed)["CFBundleIdentifier"], installer.BUNDLE_ID)
+        self.assertFalse(self.paths.preview.exists())
+        self.assertEqual(installer.tree_hash(self.paths.original_profile), self.original_profile)
+        self.assertEqual((self.paths.profile / ".tempkeyEncrypted").read_bytes(), b"n" * 64)
+        self.assertFalse((self.paths.profile / "network-settings").exists())
+        backup = Path(receipt["backup"])
+        self.assertEqual(installer.tree_hash(backup / "Telegram.app"), self.original_app)
+        self.assertFalse((backup / "profile").exists())
+        metadata = json.loads((backup / "backup.json").read_text())
+        self.assertEqual(metadata["scope"], "application")
+        self.assertNotIn("sourceProfile", metadata)
+        self.assertNotIn("profileSha256", metadata)
+        self.assertNotIn("confirm", self.host.events)
+        launches = [event for event in self.host.events if isinstance(event, tuple) and event[0] == "launch"]
+        self.assertEqual(launches, [("launch", str(self.paths.installed), False)])
+        self.assertEqual(self.paths.profile.stat().st_mode & 0o777, 0o700)
+        self.assertEqual(self.paths.receipt.stat().st_mode & 0o777, 0o600)
+
+    def test_fresh_install_never_inspects_original_profile(self):
+        class ForbiddenProfile:
+            def __getattr__(self, name):
+                raise AssertionError("original profile must not be inspected")
+
+            def __fspath__(self):
+                raise AssertionError("original profile must not be inspected")
+
+            def __str__(self):
+                raise AssertionError("original profile must not be inspected")
+
+        paths = installer.InstallPaths(self.paths.applications, self.paths.support, ForbiddenProfile())
+        receipt = installer.install_delivery(self.delivery, paths, self.host, fresh=True)
+        self.assertEqual(receipt["installationMode"], "fresh")
+        self.assertEqual(installer.tree_hash(self.paths.original_profile), self.original_profile)
+
+    def test_fresh_update_backs_up_private_profile_and_preserves_logged_in_data(self):
+        self.run_install(fresh=True)
+        (self.paths.profile / "new-session").write_text("keep reconnected session")
+        before = installer.tree_hash(self.paths.profile)
+        self.advance()
+        self.host.events.clear()
+        receipt = self.run_install(fresh=True)
+        self.assertEqual(receipt["installationMode"], "fresh")
+        self.assertEqual(installer.tree_hash(self.paths.profile), before)
+        self.assertEqual(installer.tree_hash(Path(receipt["backup"]) / "profile"), before)
+        self.assertFalse(any(isinstance(event, tuple) and event[0] == "initialize_profile" for event in self.host.events))
+        self.assertNotIn("confirm", self.host.events)
+
+    def test_fresh_replacement_failure_restores_official_app_and_resumes_existing_profile(self):
+        self.host.fail_replacement_verify = True
+        with self.assertRaisesRegex(RuntimeError, "ancienne application restaurée"):
+            self.run_install(fresh=True)
+        self.assert_originals()
+        receipt = json.loads(self.paths.receipt.read_text())
+        self.assertEqual(receipt["status"], "pending-fresh")
+        profile_hash = installer.tree_hash(self.paths.profile)
+        self.host.fail_replacement_verify = False
+        self.host.events.clear()
+        result = self.run_install()
+        self.assertEqual(result["status"], "validated")
+        self.assertEqual(installer.tree_hash(self.paths.profile), profile_hash)
+        self.assertEqual(len(self.backups()), 1)
+        self.assertFalse(any(isinstance(event, tuple) and event[0] == "initialize_profile" for event in self.host.events))
+
+    def test_fresh_failed_launch_preserves_new_profile_and_retries_without_backup(self):
+        self.host.fail_launch = True
+        with self.assertRaisesRegex(RuntimeError, "sa relance"):
+            self.run_install(fresh=True)
+        receipt = json.loads(self.paths.receipt.read_text())
+        self.assertTrue(receipt["launchPending"])
+        self.assertEqual(receipt["installationMode"], "fresh")
+        (self.paths.profile / "new-session").write_text("keep")
+        before = installer.tree_hash(self.paths.profile)
+        self.host.fail_launch = False
+        self.host.events.clear()
+        result = self.run_install(fresh=True)
+        self.assertFalse(result["launchPending"])
+        self.assertEqual(installer.tree_hash(self.paths.profile), before)
+        self.assertEqual(len(self.backups()), 1)
+        self.assertFalse(any(isinstance(event, tuple) and event[0] == "initialize_profile" for event in self.host.events))
+
+    def test_fresh_prepared_profile_is_reused_after_interrupted_rename(self):
+        real_rename = Path.rename
+        def stop_profile_rename(source, destination):
+            if destination == self.paths.profile:
+                raise OSError("fixture before profile rename")
+            return real_rename(source, destination)
+        with mock.patch.object(installer.Path, "rename", autospec=True, side_effect=stop_profile_rename):
+            with self.assertRaisesRegex(OSError, "fixture before profile rename"):
+                self.run_install(fresh=True)
+        self.assert_originals()
+        self.assertFalse(self.paths.profile.exists())
+        receipt = json.loads(self.paths.receipt.read_text())
+        prepared = Path(receipt["preparedProfile"])
+        before = installer.tree_hash(prepared)
+        self.host.events.clear()
+        self.run_install(fresh=True)
+        self.assertEqual(installer.tree_hash(self.paths.profile), before)
+        self.assertFalse(prepared.exists())
+        self.assertFalse(any(isinstance(event, tuple) and event[0] == "initialize_profile" for event in self.host.events))
+        self.assertEqual(len(self.backups()), 1)
+
+    def test_fresh_initialization_failure_keeps_official_app_backup_and_temporary_profile(self):
+        self.host.fail_initialization = True
+        with self.assertRaisesRegex(RuntimeError, "initialisation neuve échouée"):
+            self.run_install(fresh=True)
+        self.assert_originals()
+        receipt = json.loads(self.paths.receipt.read_text())
+        self.assertEqual(receipt["status"], "pending-fresh")
+        self.assertFalse(self.paths.profile.exists())
+        incomplete = list(self.paths.support.glob(".profile-*"))
+        self.assertEqual(len(incomplete), 1)
+        self.host.fail_initialization = False
+        self.run_install(fresh=True)
+        self.assertTrue(incomplete[0].is_dir())
+        self.assertEqual(len(self.backups()), 1)
+
+    def test_fresh_existing_private_profile_without_receipt_is_preserved(self):
+        self.make_profile(self.paths.profile)
+        before = installer.tree_hash(self.paths.profile)
+        with self.assertRaisesRegex(RuntimeError, "sans reçu"):
+            self.run_install(fresh=True)
+        self.assertEqual(installer.tree_hash(self.paths.profile), before)
+        self.assertFalse(self.backups())
+        self.assertNotIn("quit", self.host.events)
+        self.assert_originals()
+
+    def test_fresh_refuses_existing_migration_receipt(self):
+        self.host.answer = None
+        with self.assertRaisesRegex(RuntimeError, "VALIDER"):
+            self.run_install()
+        before = self.paths.receipt.read_bytes()
+        profile_hash = installer.tree_hash(self.paths.profile)
+        self.host.events.clear()
+        with self.assertRaisesRegex(RuntimeError, "reçu de migration"):
+            self.run_install(fresh=True)
+        self.assertEqual(self.paths.receipt.read_bytes(), before)
+        self.assertEqual(installer.tree_hash(self.paths.profile), profile_hash)
+        self.assertNotIn("quit", self.host.events)
+        self.assert_originals()
+
+    def test_fresh_changed_profile_is_preserved_without_reset_or_replacement(self):
+        self.host.fail_replacement_verify = True
+        with self.assertRaises(RuntimeError):
+            self.run_install(fresh=True)
+        self.host.fail_replacement_verify = False
+        (self.paths.profile / "unexpected-data").write_text("preserve")
+        before = installer.tree_hash(self.paths.profile)
+        with self.assertRaisesRegex(RuntimeError, "diffère du profil préparé"):
+            self.run_install(fresh=True)
+        self.assertEqual(installer.tree_hash(self.paths.profile), before)
+        self.assert_originals()
+
+    def test_fresh_other_delivery_cannot_replace_pending_installation(self):
+        self.host.fail_initialization = True
+        with self.assertRaises(RuntimeError):
+            self.run_install(fresh=True)
+        self.advance()
+        with self.assertRaisesRegex(RuntimeError, "autre livraison"):
+            self.run_install(fresh=True)
+        self.assert_originals()
+        self.assertEqual(len(self.backups()), 1)
+
+    def test_fresh_corrupt_application_backup_prevents_retry(self):
+        self.host.fail_initialization = True
+        with self.assertRaises(RuntimeError):
+            self.run_install(fresh=True)
+        backup = self.backups()[0]
+        (backup / "Telegram.app/Contents/MacOS/Telegram").write_bytes(b"modified")
+        self.host.fail_initialization = False
+        self.host.events.clear()
+        with self.assertRaisesRegex(RuntimeError, "Sauvegarde altérée"):
+            self.run_install(fresh=True)
+        self.assertNotIn("quit", self.host.events)
+        self.assert_originals()
 
     def test_initial_migration_validated_keeps_original_profile_and_verified_backup(self):
         self.host.preview_action = lambda: (self.paths.profile / "new-message").write_text("received in preview")

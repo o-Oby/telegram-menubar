@@ -6,9 +6,8 @@ et non celles de Telegram Desktop (`tdesktop`). Le dépôt public est
 [o-Oby/telegram-menubar](https://github.com/o-Oby/telegram-menubar), branche `codex/macos-menubar`.
 
 **État actuel :** la compilation complète arm64 et le premier DMG **13.1.0-r1** sont vérifiés,
-y compris la signature ad hoc et les paramètres propres au fork. La reprise de la session reste à valider
-dans l’application. L’application App Store installée et son profil d’origine ne doivent pas être
-remplacés avant la validation initiale décrite ci-dessous.
+y compris la signature ad hoc et les paramètres propres au fork. L’installation avec un profil neuf
+reste à vérifier sur le Mac ; la connexion au compte se fait dans l’application.
 
 ## Comportement prévu
 
@@ -59,61 +58,52 @@ bash scripts/menubar/build.sh --check
 
 Ce contrôle ne valide pas à lui seul toute la chaîne de compilation ni la connexion au service Telegram.
 
-## Première installation et conservation de la session
+## Première installation avec un profil neuf
 
-La version App Store utilise un conteneur et des autorisations liés à la signature de Telegram.
 Le fork possède sa propre identité **`fr.oby.telegram-menubar`**, sa propre icône et un profil privé :
 
 ```text
 ~/Library/Application Support/Telegram Menu Bar/profile
 ```
 
-Après la compilation, le script **Mettre à jour Telegram Menu Bar.command** automatise ce parcours :
+Double-cliquer **Mettre à jour Telegram Menu Bar.command**. Le script vérifie le DMG, quitte Telegram,
+sauvegarde l’application officielle, prépare un profil vide, remplace `/Applications/Telegram.app`
+et lance le fork. Connectez-vous ensuite avec votre compte Telegram. Le profil App Store d’origine
+n’est ni lu ni copié par ce parcours et reste à son emplacement. Aucun accès complet au disque n’est nécessaire.
 
-1. Construire et vérifier le DMG du fork.
-2. Quitter complètement Telegram, puis sauvegarder l’application et le profil App Store fermé.
-3. Copier le profil complet, y compris ses fichiers cachés et sa clé de base de données chiffrée,
-   dans le dossier privé du fork. Le conteneur App Store d’origine reste intact. Le lien macOS connu
-   `Library/Application Scripts/6N38VWS5BX.ru.keepcoder.Telegram` est conservé sans être suivi dans
-   la sauvegarde, puis remplacé par un dossier local vide uniquement dans la copie privée.
-4. Lancer **Telegram Menu Bar.app** en prévisualisation et vérifier la reprise de session,
-   les conversations et le proxy attendu.
-5. Saisir exactement **VALIDER** dans le terminal, après ces vérifications, pour remplacer
-   `/Applications/Telegram.app`. Toute autre réponse laisse l’application officielle en place.
+La clé locale du profil neuf est créée par le code natif Telegram, compilé dans un petit outil local,
+puis son déchiffrement est vérifié avant utilisation. Aucun identifiant de session ni secret n’est affiché.
+Un profil existant n’est jamais réinitialisé automatiquement. Si l’installation est interrompue,
+un nouveau double-clic reprend la même livraison et conserve le profil déjà préparé.
 
-Si cette validation est interrompue, un nouveau double-clic reprend la même livraison avant de rechercher
-une version plus récente. Le profil privé déjà ouvert n’est jamais écrasé par une nouvelle copie.
-
-Cette confirmation est propre à la migration initiale : la reprise de session n’est pas garantie par
-la seule copie des fichiers. Si le fork demande une nouvelle connexion ou propose de réinitialiser
-les données, arrêter la validation et examiner le problème plutôt que confirmer le remplacement.
-
-Le code local de verrouillage de Telegram peut être demandé. Aucun secret du trousseau n’est exporté.
-La reprise des réglages biométriques et des données locales du portefeuille n’est pas garantie ;
-le profil officiel et sa sauvegarde sont conservés pour permettre un retour en arrière.
+La première sauvegarde contient uniquement l’ancienne application. Après connexion, les mises à jour
+suivantes sauvegardent l’application **et le profil du fork** avant remplacement.
+Les conversations disponibles dans le compte se retrouveront après connexion ; les données propres
+à l’ancienne installation ne sont pas transférées par ce parcours.
 
 L’extension de partage macOS TelegramShare n’est pas embarquée dans cette variante personnelle.
-La compilation est d’abord non signée, puis signée localement de façon ad hoc, sans notarisation Apple.
-macOS peut donc demander une autorisation d’ouverture ou d’accès au conteneur pendant la migration.
-Si le système refuse la lecture du profil App Store, le script doit s’arrêter avant de fermer Telegram.
-Sous macOS 27, l’accès aux données d’autres apps est refusé par défaut et peut se régler dans
-**Confidentialité et sécurité > Fichiers et dossiers > Terminal**. Autoriser l’accès aux données de Telegram
-si cette entrée est proposée, puis relancer la même livraison. Ne pas attendre systématiquement une popup.
-Ne pas déplacer le profil d’origine ni modifier ses droits pour contourner ce contrôle. Si l’autorisation
-ciblée n’est pas proposée, un accès complet au disque temporaire pour Terminal peut être nécessaire,
-avec votre accord. Le conserver jusqu’au remplacement terminé, puis le retirer. Pendant la prévisualisation,
-ne pas rouvrir l’application officielle : le script vérifie encore que son profil est inchangé avant le remplacement.
+L’application est signée localement de façon ad hoc, sans notarisation Apple.
+
+### Migration optionnelle de l’ancien profil
+
+Le parcours de copie reste disponible explicitement avec `python3 scripts/menubar/update.py --migrate-profile`.
+Il nécessite l’accès au conteneur App Store, effectue une sauvegarde complète et ouvre une prévisualisation.
+Il attend **VALIDER** dans Terminal après vérification de la session, de la réception et du proxy.
+Il ne faut pas rouvrir l’application officielle pendant cette vérification. Le lien macOS connu
+`Library/Application Scripts/6N38VWS5BX.ru.keepcoder.Telegram` est conservé sans être suivi dans
+la sauvegarde, puis remplacé par un dossier local vide uniquement dans la copie privée.
+Aucun secret du trousseau n’est exporté. Retirer toute autorisation temporaire après la migration.
 
 ## Proxy et Proton
 
-Le Telegram installé utilise déjà un **proxy interne à l’application**. Le fork doit conserver ce
-réglage avec le profil copié. Aucun lanceur `Telegram (Proton).app` n’a été trouvé sur ce Mac.
+Le Telegram installé utilisait son proxy SOCKS5 interne **127.0.0.1:25344**, fourni par le service Proton local.
+Un profil neuf ne reprend aucun réglage de l’ancien profil : configurer ce proxy dans Telegram Menu Bar
+avant de se connecter. Le service Proton doit être actif. Les arguments Electron employés pour Element
+ne s’appliquent pas au client natif Telegram.
 
-Le script relance donc le client natif, qui réutilise ses réglages de proxy. Les arguments de lancement
-Electron employés pour Element ne s’appliquent pas à Telegram. La vérification du proxy connecté fait
-partie de la validation initiale, avant tout remplacement.
+Les relances et mises à jour suivantes conservent les réglages de proxy enregistrés dans le profil du fork.
 
-## Mises à jour après validation initiale
+## Mises à jour après installation
 
 Double-cliquer **Mettre à jour Telegram Menu Bar.command** dans le dossier du projet.
 Le parcours prévu prépare les sources dans un espace isolé, fusionne la version officielle avec les

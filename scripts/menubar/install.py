@@ -277,20 +277,32 @@ def make_backup(paths, source_profile, host):
     backup.mkdir(mode=0o700)
     app_hash = verified_copy(paths.installed, backup / "Telegram.app", host)
     host.verify_signature(backup / "Telegram.app")
-    profile_hash = verified_copy(source_profile, backup / "profile", host)
+    profile_hash = verified_copy(source_profile, backup / "profile", host) if source_profile is not None else None
     host.assert_stopped([paths.installed, paths.preview])
-    write_json(backup / "backup.json", {
+    metadata = {
         "schema": 1, "completedAt": timestamp(), "applicationSha256": app_hash,
-        "profileSha256": profile_hash, "sourceProfile": str(source_profile),
         "sourceApplication": str(paths.installed),
-    })
+    }
+    if source_profile is None:
+        metadata["scope"] = "application"
+    else:
+        metadata.update(profileSha256=profile_hash, sourceProfile=str(source_profile))
+    write_json(backup / "backup.json", metadata)
     instructions = backup / "RESTAURATION.txt"
-    instructions.write_text(
-        "Quitter toutes les instances de Telegram avant toute restauration.\n"
-        "Telegram.app contient l’application sauvegardée ; profile contient son profil complet.\n"
-        "Ne jamais mélanger des fichiers de deux profils et conserver le profil actuel avant de le remplacer.\n"
-        "Le profil officiel dans Library/Group Containers n’a pas été modifié par cet installateur.\n"
-    )
+    if source_profile is None:
+        instructions.write_text(
+            "Quitter toutes les instances de Telegram avant toute restauration.\n"
+            "Telegram.app contient uniquement l’application sauvegardée.\n"
+            "Le profil officiel n’a été ni lu, ni copié, ni modifié par cet installateur.\n"
+            "Le nouveau profil privé de Telegram Menu Bar est conservé séparément.\n"
+        )
+    else:
+        instructions.write_text(
+            "Quitter toutes les instances de Telegram avant toute restauration.\n"
+            "Telegram.app contient l’application sauvegardée ; profile contient son profil complet.\n"
+            "Ne jamais mélanger des fichiers de deux profils et conserver le profil actuel avant de le remplacer.\n"
+            "Le profil officiel dans Library/Group Containers n’a pas été modifié par cet installateur.\n"
+        )
     os.chmod(instructions, 0o600)
     return backup, app_hash, profile_hash
 
@@ -301,7 +313,10 @@ def verify_backup(paths, receipt, host):
         raise RuntimeError("Chemin de sauvegarde inattendu dans le reçu.")
     require_directory(backup)
     metadata = read_json_object(backup / "backup.json", "Manifest de sauvegarde")
-    for name, key in [("Telegram.app", "applicationSha256"), ("profile", "profileSha256")]:
+    entries = [("Telegram.app", "applicationSha256")]
+    if metadata.get("scope") != "application":
+        entries.append(("profile", "profileSha256"))
+    for name, key in entries:
         if tree_hash(backup / name) != metadata.get(key):
             raise RuntimeError(f"Sauvegarde altérée : {backup}")
     host.verify_signature(backup / "Telegram.app")
@@ -382,6 +397,8 @@ def replace_application(paths, candidate, delivery, candidate_hash, backup, old_
             "sourceCommit": delivery["sourceCommit"], "upstreamCommit": delivery["upstreamCommit"],
             "launchPending": True, "previousApplication": str(previous), "previousApplicationSha256": old_hash,
         }
+        if old_receipt.get("installationMode") == "fresh":
+            receipt["installationMode"] = "fresh"
         write_json(paths.receipt, receipt)
         launch_attempted = True
         host.launch(paths.installed, preview=False)
@@ -412,7 +429,58 @@ def replace_application(paths, candidate, delivery, candidate_hash, backup, old_
         raise RuntimeError(f"Remplacement annulé avant lancement ; ancienne application restaurée. Sauvegarde : {backup}. {error}") from error
 
 
-def install_delivery(directory, paths, host):
+def install_fresh(directory, paths, delivery, dmg_hash, candidate, candidate_hash, receipt, host):
+    if receipt and (receipt.get("status") != "pending-fresh" or receipt.get("installationMode") != "fresh"):
+        raise RuntimeError("Un reçu de migration existe déjà. Il est conservé ; aucun nouveau profil ne sera créé.")
+    if paths.preview.exists() or paths.preview.is_symlink():
+        raise RuntimeError("Une prévisualisation existe déjà. Elle est conservée ; aucune installation neuve effectuée.")
+    if not receipt:
+        if paths.profile.exists() or paths.profile.is_symlink():
+            raise RuntimeError("Un profil privé existe sans reçu. Il est conservé ; aucune installation neuve effectuée.")
+        host.quit([paths.installed, paths.preview])
+        backup, app_hash, _ = make_backup(paths, None, host)
+        receipt = {
+            "schema": 1, "status": "pending-fresh", "installationMode": "fresh", "createdAt": timestamp(),
+            "backup": str(backup), "deliveryDirectory": str(directory), "dmgSha256": dmg_hash,
+            "applicationSha256": candidate_hash, "originalApplicationSha256": app_hash,
+        }
+        write_json(paths.receipt, receipt)
+    if receipt.get("dmgSha256") != dmg_hash or receipt.get("applicationSha256") != candidate_hash:
+        raise RuntimeError(f"Une autre livraison attend son installation : {receipt.get('deliveryDirectory')}. Terminez-la avant de changer de version.")
+    backup, metadata = verify_backup(paths, receipt, host)
+    if metadata.get("scope") != "application" or metadata.get("applicationSha256") != receipt.get("originalApplicationSha256"):
+        raise RuntimeError("La sauvegarde de l’installation neuve ne correspond pas au reçu.")
+    if tree_hash(paths.installed) != receipt.get("originalApplicationSha256"):
+        raise RuntimeError("L’application officielle a changé depuis la sauvegarde. Elle est conservée ; vérification manuelle nécessaire.")
+    host.quit([paths.installed, paths.preview])
+    if not paths.profile.exists():
+        prepared = receipt.get("preparedProfile")
+        if prepared:
+            temporary = Path(prepared)
+            if temporary.parent != paths.support or not re.fullmatch(r"\.profile-[a-f0-9]{32}", temporary.name):
+                raise RuntimeError("Chemin du profil préparé inattendu dans le reçu.")
+            profile_valid(temporary)
+            if tree_hash(temporary) != receipt.get("privateProfileSha256"):
+                raise RuntimeError("Le profil préparé a changé. Il est conservé ; aucune réinitialisation effectuée.")
+        elif receipt.get("privateProfileSha256"):
+            raise RuntimeError("Le profil privé préparé a disparu. Aucune réinitialisation effectuée.")
+        else:
+            temporary = paths.support / (".profile-" + uuid.uuid4().hex)
+            host.initialize_profile(temporary)
+            profile_valid(temporary)
+            receipt["preparedProfile"] = str(temporary)
+            receipt["privateProfileSha256"] = tree_hash(temporary)
+            write_json(paths.receipt, receipt)
+        temporary.rename(paths.profile)
+    profile_valid(paths.profile)
+    if tree_hash(paths.profile) != receipt.get("privateProfileSha256"):
+        raise RuntimeError("Le profil privé diffère du profil préparé. Il est conservé ; aucune réinitialisation effectuée.")
+    if tree_hash(paths.installed) != receipt.get("originalApplicationSha256"):
+        raise RuntimeError("L’application officielle a changé pendant la préparation. Aucun remplacement effectué.")
+    return replace_application(paths, candidate, delivery, candidate_hash, backup, receipt, host)
+
+
+def install_delivery(directory, paths, host, fresh=False):
     directory = Path(directory).resolve()
     delivery, (dmg, dmg_hash) = read_delivery(directory)
     require_directory(paths.applications)
@@ -434,7 +502,7 @@ def install_delivery(directory, paths, host):
     no_symlink_path(paths.receipt)
     no_symlink_path(paths.profile)
     receipt = read_json_object(paths.receipt, "Reçu d’installation") if paths.receipt.exists() else None
-    if receipt is not None and (type(receipt.get("schema")) is not int or receipt.get("schema") != 1 or receipt.get("status") not in ["pending-validation", "validated"]):
+    if receipt is not None and (type(receipt.get("schema")) is not int or receipt.get("schema") != 1 or receipt.get("status") not in ["pending-validation", "pending-fresh", "validated"]):
         raise RuntimeError(f"Une installation interrompue demande une vérification manuelle : {paths.receipt}. Les sauvegardes sont conservées.")
     workspace = Path(tempfile.mkdtemp(prefix=".telegram-menubar-install-", dir=paths.applications))
     try:
@@ -462,6 +530,8 @@ def install_delivery(directory, paths, host):
             profile_valid(paths.profile)
             backup, _, _ = make_backup(paths, paths.profile, host)
             return replace_application(paths, candidate, delivery, candidate_hash, backup, receipt, host)
+        if fresh or (receipt and receipt.get("status") == "pending-fresh"):
+            return install_fresh(directory, paths, delivery, dmg_hash, candidate, candidate_hash, receipt, host)
         if receipt and receipt.get("status") != "pending-validation":
             raise RuntimeError("Le reçu validé ne correspond plus à l’application officielle installée.")
         if not receipt:
@@ -525,6 +595,11 @@ def install_delivery(directory, paths, host):
 
 
 class MacHost:
+    def initialize_profile(self, destination):
+        from initialize_profile import initialize_profile
+        print("Création d’un profil Telegram neuf…", flush=True)
+        initialize_profile(destination)
+
     def run(self, command, timeout=120):
         process = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
         if process.returncode:
@@ -619,10 +694,10 @@ class MacHost:
             return None
 
 
-def install_on_mac(directory):
+def install_on_mac(directory, fresh=False):
     if sys.platform != "darwin":
         raise RuntimeError("L’installation est disponible uniquement sur macOS.")
     home = Path.home()
     paths = InstallPaths(Path("/Applications"), home / "Library/Application Support/Telegram Menu Bar",
                          home / "Library/Group Containers/6N38VWS5BX.ru.keepcoder.Telegram/appstore")
-    return install_delivery(directory, paths, MacHost())
+    return install_delivery(directory, paths, MacHost(), fresh=fresh)
