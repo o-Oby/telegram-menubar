@@ -268,6 +268,7 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
     private var timer: SwiftSignalKit.Timer?
     
     private(set) var appEncryption: AppEncryptionParameters!
+    private(set) var menuBarWindowController: MenuBarWindowController?
     private var memoryPressureMonitor: MemoryPressureMonitor?
     private var rustEngineCrash: CrashedRun?
 
@@ -314,6 +315,11 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
 
     
     func applicationDidFinishLaunching(_ aNotification: Notification) {
+        let menuBarWindowController = MenuBarWindowController(window: window)
+        self.menuBarWindowController = menuBarWindowController
+        window.closeInterceptor = { [weak menuBarWindowController] in
+            menuBarWindowController?.close() ?? false
+        }
 
         installInvalidFrameDetector()
         memoryPressureMonitor = MemoryPressureMonitor()
@@ -387,7 +393,7 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
         
         self.containerUrl = containerUrl.path
 
-        try! PasscodeEnvironment.shared.configure(PasscodeConfiguration(appGroupIdentifier: ApiEnvironment.group, processRole: .mainApp, biometricKeychainService: walletBiometricKeychainService, keychainScope: ApiEnvironment.prefix == "debug" ? "debug" : nil), privateAccessGroup: { ApiEnvironment.group })
+        try! PasscodeEnvironment.shared.configure(PasscodeConfiguration(appGroupIdentifier: ApiEnvironment.group, processRole: .mainApp, biometricKeychainService: walletBiometricKeychainService, keychainScope: ApiEnvironment.keychainScope), privateAccessGroup: { ApiEnvironment.group })
         
         TempBox.initializeShared(basePath: self.containerUrl, processType: "app", launchSpecificId: arc4random64())
         
@@ -470,7 +476,12 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
 //        #endif
         
         let bundleId = Bundle.main.bundleIdentifier
-        if let bundleId = bundleId {
+        #if PERSONAL_MENUBAR
+        let registerLinks = !CommandLine.arguments.contains("--menubar-preview")
+        #else
+        let registerLinks = true
+        #endif
+        if let bundleId = bundleId, registerLinks {
             LSSetDefaultHandlerForURLScheme("tg" as CFString, bundleId as CFString)
         }
         
@@ -861,10 +872,12 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
                         } else {
                             navigation.push(ChatController(context: contextValue, chatLocation: .peer(peerId)))
                         }
+                        self.menuBarWindowController?.prepareToReveal()
                         NSApp.activate(ignoringOtherApps: true)
                         contextValue.window.deminiaturize(nil)
                     } else {
                         sharedContext.switchToAccount(id: account.id, action: .chat(peerId, necessary: true))
+                        self.menuBarWindowController?.prepareToReveal()
                         NSApp.activate(ignoringOtherApps: true)
                         window.deminiaturize(nil)
                     }
@@ -912,10 +925,12 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
                                 })
                             }
                         }
+                        self.menuBarWindowController?.prepareToReveal()
                         NSApp.activate(ignoringOtherApps: true)
                         contextValue.window.deminiaturize(nil)
                     } else {
                         sharedContext.switchToAccount(id: account.id, action: .thread(threadId, fromId, threadData, necessary: true))
+                        self.menuBarWindowController?.prepareToReveal()
                         NSApp.activate(ignoringOtherApps: true)
                         window.deminiaturize(nil)
                     }
@@ -1315,6 +1330,7 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
 
     @IBAction func checkForUpdates(_ sender: Any) {
         #if !APP_STORE
+            guard officialUpdaterEnabled else { return }
             showModal(with: InputDataModalController(AppUpdateViewController()), for: window)
             #if STABLE
                 if let context = self.contextValue?.context {
@@ -1420,8 +1436,7 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
         AppDelegate.eventProcessed = url
         
         if let url = AppDelegate.eventProcessed {
-            NSApp.activate(ignoringOtherApps: true)
-            self.window.deminiaturize(self)
+            menuBarWindowController?.reveal()
             if let context = self.contextValue?.context {
                 AppDelegate.eventProcessed = nil
                 let link = inApp(for: url as NSString, context: context, openInfo: { (peerId, isChat, postId, action) in
@@ -1535,10 +1550,7 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
     }
     
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !self.window.isVisible {
-            self.window.makeKeyAndOrderFront(self)
-            self.window.orderFrontRegardless()
-        }
+        menuBarWindowController?.reveal()
         if viewer != nil {
             viewer?.windowDidResignKey()
         }
@@ -1578,10 +1590,12 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
     }
     
     func applicationWillUnhide(_ notification: Notification) {
+        menuBarWindowController?.prepareToReveal()
         window.makeKeyAndOrderFront(nil)
     }
     
     func applicationWillBecomeActive(_ notification: Notification) {
+        menuBarWindowController?.prepareToReveal()
         if contextValue != nil, !self.window.isMiniaturized {
             if !self.window.isVisible {
                 self.window.makeKeyAndOrderFront(self)
@@ -1611,6 +1625,7 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
     }
     
     func applicationWillTerminate(_ notification: Notification) {
+        menuBarWindowController?.beginTermination()
         self.terminated = true
         disarmCrashMarker()
         if let containerUrl = self.containerUrl {
@@ -1640,6 +1655,7 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
     }
     
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        menuBarWindowController?.beginTermination()
         
         if let context = self.contextValue?.context {
             let navigation = context.bindings.rootNavigation()
@@ -1661,7 +1677,7 @@ class AppDelegate: NSResponder, NSApplicationDelegate, NSUserNotificationCenterD
     
     
     @IBAction func unhide(_ sender: Any) {
-         window.makeKeyAndOrderFront(sender)
+        menuBarWindowController?.reveal()
     }
     
     @IBAction func aboutAction(_ sender: Any) {

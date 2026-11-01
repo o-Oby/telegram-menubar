@@ -11,6 +11,12 @@ import CrashRecoveryUI
 
 
 
+#if PERSONAL_MENUBAR
+let officialUpdaterEnabled = false
+#else
+let officialUpdaterEnabled = true
+#endif
+
 final class TelegramUpdater : NSObject, SUUpdaterPrivate {
     var delegate: SUUpdaterDelegate!
     
@@ -86,6 +92,7 @@ private var driver:SUBasicUpdateDriver? {
 private let host = SUHost(bundle: Bundle.main)
 
 func updateApplication(sharedContext: SharedAccountContext) {
+    guard officialUpdaterEnabled else { return }
 
     
     let state = stateValue.with {$0.loadingState}
@@ -156,6 +163,9 @@ private let _id_check_for_updates: InputDataIdentifier = InputDataIdentifier("_i
 private let _id_unarchiving: InputDataIdentifier = InputDataIdentifier("_id_unarchiving")
 
 private func appUpdateEntries(state: AppUpdateState) -> [InputDataEntry] {
+    guard officialUpdaterEnabled else {
+        return [.desc(sectionId: 0, index: 0, text: .plain("Pour mettre Telegram Menu Bar à jour en conservant ses modifications, ouvrez Mettre à jour Telegram Menu Bar.command dans le dossier du fork."), data: InputDataGeneralTextData(viewType: .textBottomItem))]
+    }
     var entries: [InputDataEntry] = []
     
     var sectionId: Int32 = 0
@@ -361,6 +371,7 @@ private final class InternalUpdateDriver : ExternalUpdateDriver {
     }
     
     override func checkForUpdates(at URL: URL!, host aHost: SUHost!, domain: String!) {
+        guard officialUpdaterEnabled else { return }
         self.host = aHost
 
         updateSharedState {
@@ -379,6 +390,7 @@ private final class InternalUpdateDriver : ExternalUpdateDriver {
     }
     
     override func downloadUpdate() {
+        guard officialUpdaterEnabled else { return }
         let downloader = InternalUpdaterDownloader(context: self.context, updateItem: self.updateItem, delegate: self)
         self.download = downloader
         let fileName = "Telegram \(self.updateItem.versionString ?? "")"
@@ -448,6 +460,7 @@ private class ExternalUpdateDriver : SUBasicUpdateDriver {
     }
     
     override func extractUpdate() {
+        guard officialUpdaterEnabled else { return }
         super.extractUpdate()
         updateSharedState {
             return $0.withUpdatedLoadingState(.unarchiving(self.updateItem))
@@ -457,6 +470,7 @@ private class ExternalUpdateDriver : SUBasicUpdateDriver {
 
     
     override func install(withToolAndRelaunch relaunch: Bool, displayingUserInterface showUI: Bool) {
+        guard officialUpdaterEnabled else { return }
         if isCurrentDriver {
             cancelStagedUpdate()
         }
@@ -486,6 +500,7 @@ private class ExternalUpdateDriver : SUBasicUpdateDriver {
     }
     
     override func checkForUpdates(at url: URL!, host aHost: SUHost!, domain: String!) {
+        guard officialUpdaterEnabled else { return }
         updateSharedState {
             return $0.withUpdatedLoadingState(.initializing)
         }
@@ -494,6 +509,7 @@ private class ExternalUpdateDriver : SUBasicUpdateDriver {
     }
     
     override func downloadUpdate() {
+        guard officialUpdaterEnabled else { return }
         if isStaging {
             downloadKeepingReadyUpdate()
             return
@@ -582,6 +598,7 @@ private class ExternalUpdateDriver : SUBasicUpdateDriver {
 private let disposable = MetaDisposable()
 
 func setAppUpdaterBaseDomain(_ domain: String?) {
+    guard officialUpdaterEnabled else { return }
     updater.domain = domain
     if let domain = domain {
         updater.host = URL(string: domain)?.host
@@ -622,6 +639,7 @@ func crashRecoveryUpdater() -> CrashRecoveryUpdater {
 }
 
 func updateAppIfNeeded() {
+    guard officialUpdaterEnabled else { return }
     let state = stateValue.with {$0.loadingState}
     
     switch state {
@@ -674,6 +692,7 @@ private var stagedStartedAt: CFAbsoluteTime = 0
 private let stagedUpdateTimeout: CFAbsoluteTime = 60 * 60
 
 private func stageNewerUpdate() {
+    guard officialUpdaterEnabled else { return }
     guard case let .readyToInstall(item) = stateValue.with({ $0.loadingState }), let source = updaterSource else {
         return
     }
@@ -732,6 +751,7 @@ private func cancelStagedUpdate() {
 }
 
 private func resetUpdater() {
+    guard officialUpdaterEnabled else { return }
     
     #if !GITHUB
         let update:()->Void = {
@@ -763,6 +783,7 @@ private func resetUpdater() {
 private var updaterSource: UpdaterSource? = nil
 
 func updater_resetWithUpdaterSource(_ source: UpdaterSource, force: Bool = true) {
+    guard officialUpdaterEnabled else { return }
     let state = stateValue.with { $0 }
     switch state.loadingState {
     case .readyToInstall:

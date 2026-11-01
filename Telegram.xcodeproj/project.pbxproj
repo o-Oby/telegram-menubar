@@ -824,6 +824,7 @@
 		D07C6D802346A43000468B1A /* monkey_unsee.tgs in Resources */ = {isa = PBXBuildFile; fileRef = D07C6D7E2346A42E00468B1A /* monkey_unsee.tgs */; };
 		D07C6D812346A43000468B1A /* monkey_see.tgs in Resources */ = {isa = PBXBuildFile; fileRef = D07C6D7F2346A42F00468B1A /* monkey_see.tgs */; };
 		D0830FC424127473006198E7 /* new_folder.tgs in Resources */ = {isa = PBXBuildFile; fileRef = D0830FC324127468006198E7 /* new_folder.tgs */; };
+		E1EAA0212026000100000001 /* MenuBarWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1EAA0212026000100000002 /* MenuBarWindowController.swift */; };
 		D098C7191D7E175A007784E4 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = D098C7181D7E175A007784E4 /* AppDelegate.swift */; };
 		D098C71B1D7E175A007784E4 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D098C71A1D7E175A007784E4 /* Assets.xcassets */; };
 		D098C71E1D7E175A007784E4 /* MainMenu.xib in Resources */ = {isa = PBXBuildFile; fileRef = D098C71C1D7E175A007784E4 /* MainMenu.xib */; };
@@ -1889,6 +1890,7 @@
 		D0983E162568373E00467703 /* AppCenterAnalytics.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = AppCenterAnalytics.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		D0983E182568373E00467703 /* AppCenterCrashes.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = AppCenterCrashes.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		D098C7151D7E175A007784E4 /* Telegram.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Telegram.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		E1EAA0212026000100000002 /* MenuBarWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarWindowController.swift; sourceTree = "<group>"; };
 		D098C7181D7E175A007784E4 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		D098C71A1D7E175A007784E4 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		D098C71F1D7E175A007784E4 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -3378,6 +3380,7 @@
 			children = (
 				5D1C475964FAD1AA5BF7E679 /* main.swift */,
 				D098C7181D7E175A007784E4 /* AppDelegate.swift */,
+				E1EAA0212026000100000002 /* MenuBarWindowController.swift */,
 				C24949131E5B763F00D7ED5D /* ApplicationContext.swift */,
 				C2303E891D9A76D800098E12 /* MainViewController.swift */,
 				A18524B4FE5ADD178018D610 /* MMMenuItem.swift */,
@@ -4722,6 +4725,7 @@
 				27E6DB0A2689C71E003D6164 /* MetalFunctions.metal in Sources */,
 				9F7D422C222415C9007B68BB /* SharedAccountContext.swift in Sources */,
 				D098C7191D7E175A007784E4 /* AppDelegate.swift in Sources */,
+				E1EAA0212026000100000001 /* MenuBarWindowController.swift in Sources */,
 				C2BB120A1ED87C5A00BDE46A /* ControllerExtension.swift in Sources */,
 				27CEA34D27B2A31B00472CB1 /* SupportAccountContext.swift in Sources */,
 				9F7B741122296FD7006610E4 /* SharedNotificationManager.swift in Sources */,

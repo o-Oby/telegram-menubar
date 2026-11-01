@@ -2,6 +2,7 @@ import Foundation
 import TelegramCore
 import PasscodeCore
 import BuildConfig
+import ApiCredentials
 #if !SHARE
 import WalletContext
 #endif
@@ -18,6 +19,9 @@ var walletPasscodeCredentialManagedKey: String {
 #if !SHARE
 @available(macOS 10.15, *)
 private func migrateWalletKeychainScopeIfNeeded(basePath: String, isFreshInstallation: Bool) {
+    guard !ApiEnvironment.isPersonalMenuBarBuild else {
+        return
+    }
     guard PasscodeEnvironment.shared.keychainScope != nil else {
         return
     }

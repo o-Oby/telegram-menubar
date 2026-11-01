@@ -155,6 +155,7 @@ class SharedAccountContext {
             icon.isTemplate = true
         }
         statusItem?.image = icon
+        appDelegate?.menuBarWindowController?.refreshStatusItem()
     }
     
     func updateStatusBarLock(_ isLocked: Bool) {
@@ -207,35 +208,34 @@ class SharedAccountContext {
                 menu.addItem(ContextSeparatorItem())
             }
             
-            menu.addItem(ContextMenuItem(strings().statusBarActivate, handler: {
-                if !mainWindow.isKeyWindow  {
-                    NSApp.activate(ignoringOtherApps: true)
-                    mainWindow.deminiaturize(nil)
-                } else {
-                    NSApp.hide(nil)
-                }
-                
-            }, dynamicTitle: {
-                return !mainWindow.isKeyWindow ? strings().statusBarActivate : strings().statusBarHide
-            }))
-                    
-            menu.addItem(ContextMenuItem(strings().statusBarQuit, handler: {
-                NSApp.terminate(nil)
-            }))
         }
         
-       
-        
+        menu.addItem(ContextMenuItem(strings().statusBarActivate, handler: {
+            if !mainWindow.isKeyWindow || NSApp.isHidden {
+                appDelegate?.menuBarWindowController?.reveal()
+            } else {
+                mainWindow.close()
+            }
+        }, dynamicTitle: {
+            return !mainWindow.isKeyWindow ? strings().statusBarActivate : strings().statusBarHide
+        }))
+        menu.addItem(ContextMenuItem(strings().statusBarQuit, handler: {
+            NSApp.terminate(nil)
+        }))
         statusItem?.menu = menu
+        appDelegate?.menuBarWindowController?.refreshStatusItem()
     }
     
     private func updateStatusBar(_ show: Bool) {
         if show {
             if statusItem == nil {
                 statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+                appDelegate?.menuBarWindowController?.setStatusItem(statusItem)
+                updateStatusBarMenuItem()
             }
         } else {
             if let statusItem = statusItem {
+                guard appDelegate?.menuBarWindowController?.setStatusItem(nil) != false else { return }
                 NSStatusBar.system.removeStatusItem(statusItem)
                 self.statusItem = nil
             }

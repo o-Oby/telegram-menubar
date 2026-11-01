@@ -29,3 +29,13 @@ core-xprojects/tlottie/build
 .swiftpm/
 .ci-build-logs/
 *.profraw
+
+/dist/
+
+**/__pycache__/
+
+/menubar/build-credentials.json
+
+/menubar/menubar-config.json
+
+.menubar-build/
