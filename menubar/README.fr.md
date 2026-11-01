@@ -18,7 +18,7 @@ les vérifications visuelles restent à terminer dans l’application.
 - Minimiser et `⌘H` conservent leur comportement natif.
 - **Quitter** et `⌘Q` arrêtent réellement l’application.
 
-L’icône du Dock et du Finder est celle de Telegram. Le nom de l’application reste **Telegram Menu Bar**.
+L’icône du Dock et du Finder est celle de Telegram. Le nom affiché de l’application est **Telegram**.
 Ce choix est conservé lors des mises à jour du fork.
 
 Le fork réutilise l’icône monochrome et le réglage natif **Show Icon in Menu Bar**. Le Dock reste disponible

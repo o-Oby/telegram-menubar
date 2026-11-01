@@ -11,6 +11,7 @@ import sys
 
 BUNDLE_ID = "fr.oby.telegram-menubar"
 PRODUCT_NAME = "Telegram Menu Bar"
+DISPLAY_NAME = "Telegram"
 DEFAULT_CREDENTIALS = pathlib.Path.home() / "Library/Application Support/Telegram Menu Bar/build-credentials.json"
 
 
@@ -159,8 +160,8 @@ def prepare(root, credentials, source_commit):
     info_path = root / "Telegram-Mac/Info.plist"
     info = plistlib.loads(info_path.read_bytes())
     info.update({
-        "CFBundleDisplayName": PRODUCT_NAME,
-        "CFBundleName": PRODUCT_NAME,
+        "CFBundleDisplayName": DISPLAY_NAME,
+        "CFBundleName": DISPLAY_NAME,
         "CFBundleIconFile": "AppIcon",
         "CFBundleIconName": "AppIcon",
         "PersonalMenuBar": True,

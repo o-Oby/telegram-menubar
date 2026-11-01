@@ -62,6 +62,8 @@ def finish(root, app, output):
     info.pop("CFBundleIcons", None)
     info["CFBundleIconFile"] = "AppIcon"
     info["CFBundleIconName"] = "AppIcon"
+    info["CFBundleDisplayName"] = "Telegram"
+    info["CFBundleName"] = "Telegram"
     info_path.write_bytes(plistlib.dumps(info, sort_keys=False))
     entries = list(app.rglob("*"))
     for entry in entries:
