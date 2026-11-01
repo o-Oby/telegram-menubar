@@ -675,6 +675,7 @@ class MacHost:
         self.assert_stopped(apps)
 
     def launch(self, app, preview=False):
+        self.run(["/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister", "-f", str(app)])
         command = ["/usr/bin/open", "-a", str(app)]
         if preview:
             command += ["--args", "--menubar-preview"]
