@@ -1,3 +1,4 @@
+import errno
 import json
 import os
 from pathlib import Path
@@ -404,6 +405,99 @@ class InstallTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "signature invalide"):
                 self.run_install()
         self.assert_originals()
+
+
+    def test_source_profile_access_denied_before_quit(self):
+        original_access = os.access
+        with mock.patch.object(installer.os, "access", side_effect=lambda path, mode: False if path == self.paths.original_profile else original_access(path, mode)):
+            with self.assertRaisesRegex(RuntimeError, "macOS refuse la lecture.*profil"):
+                self.run_install()
+        self.assertNotIn("quit", self.host.events)
+        self.assertFalse(self.backups())
+        self.assert_originals()
+
+    def test_source_key_access_denied_before_quit(self):
+        original_access = os.access
+        key = self.paths.original_profile / ".tempkeyEncrypted"
+        with mock.patch.object(installer.os, "access", side_effect=lambda path, mode: False if path == key else original_access(path, mode)):
+            with self.assertRaisesRegex(RuntimeError, "Autorisez.*Terminal"):
+                self.run_install()
+        self.assertNotIn("quit", self.host.events)
+        self.assert_originals()
+
+    def test_walk_access_denied_is_not_silently_ignored(self):
+        def denied_walk(path, **kwargs):
+            kwargs["onerror"](PermissionError(errno.EACCES, "fixture unreadable directory"))
+        with mock.patch.object(installer.os, "walk", side_effect=denied_walk):
+            with self.assertRaisesRegex(RuntimeError, "Confidentialité et sécurité"):
+                self.run_install()
+        self.assertNotIn("quit", self.host.events)
+        self.assert_originals()
+
+    def test_private_profile_access_denied_before_update_quit(self):
+        self.run_install()
+        self.advance()
+        self.host.events.clear()
+        original_access = os.access
+        with mock.patch.object(installer.os, "access", side_effect=lambda path, mode: False if path == self.paths.profile else original_access(path, mode)):
+            with self.assertRaisesRegex(RuntimeError, "macOS refuse la lecture"):
+                self.run_install()
+        self.assertNotIn("quit", self.host.events)
+        self.assertEqual(len(self.backups()), 1)
+
+    def test_read_only_previous_app_is_archived_by_rename(self):
+        for path in [self.paths.installed, *self.paths.installed.rglob("*")]:
+            os.chmod(path, 0o555 if path.is_dir() else 0o444)
+        old_hash = installer.tree_hash(self.paths.installed)
+        try:
+            receipt = self.run_install()
+            archived = Path(receipt["archivedApplication"])
+            self.assertIn(archived.parent, [Path(receipt["backup"]), self.paths.applications])
+            self.assertEqual(installer.tree_hash(archived), old_hash)
+            self.assertNotIn("previousApplication", receipt)
+            self.assertFalse(receipt["launchPending"])
+            metadata = json.loads((Path(receipt["backup"]) / "original-application.json").read_text())
+            self.assertEqual(metadata["application"], str(archived))
+        finally:
+            for path in self.root.rglob("*"):
+                if path.is_dir():
+                    os.chmod(path, 0o755)
+
+    def test_cross_volume_archive_keeps_previous_without_pending_launch(self):
+        original_rename = Path.rename
+        def different_volume(path, target):
+            if path.name.startswith(".Telegram.previous-"):
+                raise OSError(errno.EXDEV, "fixture cross-volume rename")
+            return original_rename(path, target)
+        with mock.patch.object(Path, "rename", different_volume):
+            receipt = self.run_install()
+        archived = Path(receipt["archivedApplication"])
+        self.assertEqual(archived.parent, self.paths.applications)
+        self.assertTrue(archived.name.startswith(".Telegram.previous-"))
+        self.assertEqual(installer.tree_hash(archived), self.original_app)
+        self.assertNotIn("previousApplication", receipt)
+        self.assertFalse(receipt["launchPending"])
+        self.run_install()
+        self.assertEqual(len(self.backups()), 1)
+        self.assertTrue(archived.exists())
+
+    def test_archive_failure_does_not_mark_successful_launch_pending(self):
+        original_rename = Path.rename
+        def denied_archive(path, target):
+            if path.name.startswith(".Telegram.previous-"):
+                raise OSError(errno.EIO, "fixture archive unavailable")
+            return original_rename(path, target)
+        with mock.patch.object(Path, "rename", denied_archive):
+            with self.assertRaisesRegex(RuntimeError, "finalisation a échoué"):
+                self.run_install()
+        receipt = json.loads(self.paths.receipt.read_text())
+        self.assertFalse(receipt["launchPending"])
+        self.assertTrue(Path(receipt["previousApplication"]).exists())
+        self.run_install()
+        receipt = json.loads(self.paths.receipt.read_text())
+        self.assertNotIn("previousApplication", receipt)
+        self.assertTrue(Path(receipt["archivedApplication"]).exists())
+        self.assertEqual(len(self.backups()), 1)
 
 
 class ClockFixture:

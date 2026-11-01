@@ -1,4 +1,5 @@
 import datetime
+import errno
 import hashlib
 import json
 import os
@@ -125,19 +126,40 @@ def timestamp():
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 
+def raise_walk_error(error):
+    raise error
+
+
+def require_profile_access(path, directory=False):
+    permissions = os.R_OK | (os.X_OK if directory else 0)
+    if not os.access(path, permissions):
+        raise PermissionError(errno.EACCES, "Lecture du profil refusée", str(path))
+
+
 def profile_valid(path):
-    require_directory(path)
-    require_directory(path / "accounts-metadata")
-    for root, directories, files in os.walk(path, followlinks=False):
-        for name in directories + files:
-            entry = Path(root) / name
-            if entry.is_symlink():
-                target = os.readlink(entry)
-                if os.path.isabs(target) or os.path.commonpath([str(path), str(entry.resolve())]) != str(path):
-                    raise RuntimeError(f"Le profil contient un lien sortant ou absolu : {entry}. La copie privée ne doit pas modifier le profil original.")
-    key = path / ".tempkeyEncrypted"
-    if key.is_symlink() or not key.is_file() or key.stat().st_size != 64:
-        raise RuntimeError(f"Profil incomplet : clé locale de 64 octets attendue dans {path}. Aucune réinitialisation effectuée.")
+    try:
+        require_directory(path)
+        require_directory(path / "accounts-metadata")
+        require_profile_access(path, directory=True)
+        require_profile_access(path / "accounts-metadata", directory=True)
+        key = path / ".tempkeyEncrypted"
+        if key.is_symlink() or not key.is_file() or key.stat().st_size != 64:
+            raise RuntimeError(f"Profil incomplet : clé locale de 64 octets attendue dans {path}. Aucune réinitialisation effectuée.")
+        require_profile_access(key)
+        for root, directories, files in os.walk(path, followlinks=False, onerror=raise_walk_error):
+            for name in directories + files:
+                entry = Path(root) / name
+                if entry.is_symlink():
+                    target = os.readlink(entry)
+                    if os.path.isabs(target) or os.path.commonpath([str(path), str(entry.resolve())]) != str(path):
+                        raise RuntimeError(f"Le profil contient un lien sortant ou absolu : {entry}. La copie privée ne doit pas modifier le profil original.")
+                require_profile_access(entry, directory=name in directories)
+    except PermissionError as error:
+        raise RuntimeError(
+            f"macOS refuse la lecture du profil Telegram : {path}. "
+            "Autorisez l’application qui exécute ce script, par exemple Terminal, à accéder aux données de Telegram "
+            "dans Réglages Système > Confidentialité et sécurité, puis relancez le script. Aucun profil n’a été réinitialisé."
+        ) from error
 
 
 def version_key(version, build):
@@ -294,11 +316,34 @@ def clean_previous(paths, receipt):
     previous = Path(value)
     if previous.parent != paths.applications or not previous.name.startswith(".Telegram.previous-"):
         raise RuntimeError("Chemin de restauration inattendu.")
+    backup = Path(receipt["backup"])
+    if backup.parent != paths.backups:
+        raise RuntimeError("Chemin de sauvegarde inattendu pour l’ancienne application.")
+    require_directory(backup)
+    archived = backup / "Telegram-original.app"
+    no_symlink_path(archived)
+    expected_hash = receipt["previousApplicationSha256"]
     if previous.exists():
         require_directory(previous)
-        if tree_hash(previous) != receipt["previousApplicationSha256"]:
+        if tree_hash(previous) != expected_hash:
             raise RuntimeError(f"L’ancienne application a changé ; elle est conservée : {previous}")
-        shutil.rmtree(previous)
+        if archived.exists():
+            raise RuntimeError(f"Une archive de l’ancienne application existe déjà : {archived}. Les deux copies sont conservées.")
+        try:
+            previous.rename(archived)
+        except OSError as error:
+            if error.errno not in [errno.EXDEV, errno.EACCES, errno.EPERM]:
+                raise
+            archived = previous
+    if archived.exists():
+        require_directory(archived)
+        if tree_hash(archived) != expected_hash:
+            raise RuntimeError(f"L’archive de l’ancienne application a changé : {archived}")
+        receipt["archivedApplication"] = str(archived)
+        receipt["archivedApplicationSha256"] = expected_hash
+        write_json(backup / "original-application.json", {
+            "schema": 1, "archivedAt": timestamp(), "application": str(archived), "applicationSha256": expected_hash,
+        })
     receipt.pop("previousApplication", None)
     receipt.pop("previousApplicationSha256", None)
 
@@ -333,6 +378,7 @@ def replace_application(paths, candidate, delivery, candidate_hash, backup, old_
         launch_attempted = True
         host.launch(paths.installed, preview=False)
         receipt["launchPending"] = False
+        write_json(paths.receipt, receipt)
         clean_previous(paths, receipt)
         write_json(paths.receipt, receipt)
         return receipt
@@ -398,6 +444,7 @@ def install_delivery(directory, paths, host):
             if tree_hash(paths.installed) == candidate_hash:
                 host.launch(paths.installed, preview=False)
                 receipt["launchPending"] = False
+                write_json(paths.receipt, receipt)
                 clean_previous(paths, receipt)
                 write_json(paths.receipt, receipt)
                 return receipt
