@@ -92,6 +92,9 @@ le profil officiel et sa sauvegarde sont conservés pour permettre un retour en 
 
 La compilation est d’abord non signée, puis signée localement de façon ad hoc, sans notarisation Apple.
 macOS peut donc demander une autorisation d’ouverture ou d’accès au conteneur pendant la migration.
+Si le système refuse la lecture du profil App Store, le script doit s’arrêter avant de fermer Telegram.
+Accorder au terminal qui exécute le script l’accès demandé par macOS, puis relancer la même livraison.
+Ne pas déplacer le profil d’origine ni modifier ses droits pour contourner ce contrôle.
 
 ## Proxy et Proton
 
@@ -119,6 +122,8 @@ Chaque nouvelle compilation reconstruit actuellement les bibliothèques natives 
 livraison déjà construite et validée est réutilisée. Les prérequis sont Xcode complet avec son composant
 Metal, CMake, Ninja, Meson, NASM, Yasm, Autoconf, Automake, pkg-config, Rust et Rosetta. Le script récupère
 les sous-modules épinglés et compile les bibliothèques natives avant l’application arm64.
+Les sous-modules `third-party/twidget` et `third-party/widget-sandbox`, réservés aux laboratoires
+de performance et absents des dépendances Release, sont exclus de cette préparation.
 Les adaptations Xcode 27 et les identifiants privés sont appliqués dans la préparation isolée.
 Un premier `--check` réussi ne signifie donc pas qu’un DMG a déjà été construit.
 

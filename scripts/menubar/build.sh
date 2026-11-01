@@ -51,7 +51,9 @@ cleanup() {
 trap cleanup EXIT
 printf 'Compilation isolée : %s\n' "$build_dir"
 git -C "$repository_dir" worktree add --detach "$build_dir" "$source_commit"
-git -C "$build_dir" -c url.https://github.com/.insteadOf=git@github.com: -c url.https://gitlab.com/.insteadOf=git@gitlab.com: submodule update --init --recursive
+git -C "$build_dir" -c url.https://github.com/.insteadOf=git@github.com: -c url.https://gitlab.com/.insteadOf=git@gitlab.com: \
+    -c submodule.third-party/twidget.update=none -c submodule.third-party/widget-sandbox.update=none \
+    submodule update --init --recursive
 python3 -m unittest discover -s "$build_dir/scripts/menubar" -p 'test_*.py'
 python3 "$build_dir/tools/tests/menubar-profile/check.py"
 python3 "$build_dir/tools/tests/menubar-lifecycle/run.py"
