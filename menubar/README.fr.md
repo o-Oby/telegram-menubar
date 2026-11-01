@@ -7,7 +7,8 @@ et non celles de Telegram Desktop (`tdesktop`). Le dépôt public est
 
 **État actuel :** la compilation complète arm64 et le premier DMG **13.1.0-r1** sont vérifiés,
 y compris la signature ad hoc et les paramètres propres au fork. L’installation avec un profil neuf
-reste à vérifier sur le Mac ; la connexion au compte se fait dans l’application.
+a été effectuée sur le Mac et le processus du fork est lancé. La connexion au compte, le proxy et
+les vérifications visuelles restent à terminer dans l’application.
 
 ## Comportement prévu
 
