@@ -320,6 +320,64 @@ class InstallTests(unittest.TestCase):
             self.run_install()
         self.assertNotIn("quit", self.host.events)
 
+    def make_app_scripts_link(self, target=installer.APP_SCRIPTS_TARGET):
+        link = self.paths.original_profile / installer.APP_SCRIPTS_LINK
+        link.parent.mkdir(parents=True)
+        link.symlink_to(target)
+        self.original_profile = installer.tree_hash(self.paths.original_profile)
+        return link
+
+    def test_app_scripts_link_is_backed_up_without_following_and_localized_in_private_profile(self):
+        original = self.make_app_scripts_link()
+        original_access = os.access
+        with mock.patch.object(installer.os, "access", side_effect=lambda path, mode: False if Path(path).name == original.name and Path(path).is_symlink() else original_access(path, mode)):
+            self.run_install()
+        self.assertTrue(original.is_symlink())
+        self.assertEqual(installer.tree_hash(self.paths.original_profile), self.original_profile)
+        saved = self.backups()[0] / "profile" / installer.APP_SCRIPTS_LINK
+        self.assertTrue(saved.is_symlink())
+        self.assertEqual(os.readlink(saved), installer.APP_SCRIPTS_TARGET)
+        private = self.paths.profile / installer.APP_SCRIPTS_LINK
+        self.assertFalse(private.is_symlink())
+        self.assertTrue(private.is_dir())
+        self.assertEqual(list(private.iterdir()), [])
+        self.assertEqual(private.stat().st_mode & 0o777, 0o700)
+
+    def test_app_scripts_link_with_unexpected_target_is_rejected_before_quit(self):
+        self.make_app_scripts_link("../../../../different-directory")
+        with self.assertRaisesRegex(RuntimeError, "lien sortant"):
+            self.run_install()
+        self.assertNotIn("quit", self.host.events)
+        self.assertFalse(self.backups())
+        self.assert_originals()
+
+    def test_app_scripts_link_remains_forbidden_in_private_profile(self):
+        self.run_install()
+        link = self.paths.profile / installer.APP_SCRIPTS_LINK
+        link.parent.mkdir(parents=True)
+        link.symlink_to(installer.APP_SCRIPTS_TARGET)
+        self.host.events.clear()
+        with self.assertRaisesRegex(RuntimeError, "lien sortant"):
+            self.run_install()
+        self.assertNotIn("quit", self.host.events)
+
+    def test_localized_profile_resumes_after_interruption_before_preview(self):
+        self.make_app_scripts_link()
+        real_rename = Path.rename
+        def stop_before_preview(source, destination):
+            if destination == self.paths.preview:
+                raise OSError("fixture before preview")
+            return real_rename(source, destination)
+        with mock.patch.object(installer.Path, "rename", autospec=True, side_effect=stop_before_preview):
+            with self.assertRaisesRegex(OSError, "fixture before preview"):
+                self.run_install()
+        receipt = json.loads(self.paths.receipt.read_text())
+        self.assertFalse(receipt["previewLaunched"])
+        self.assertEqual(installer.tree_hash(self.paths.profile), receipt["privateProfileSha256"])
+        self.run_install()
+        self.assertEqual(len(self.backups()), 1)
+        self.assertEqual(installer.tree_hash(self.paths.original_profile), self.original_profile)
+
     def test_relative_profile_symlinks_stay_inside_private_copy(self):
         (self.paths.original_profile / "local-link").symlink_to("accounts-metadata/fixture")
         self.run_install()

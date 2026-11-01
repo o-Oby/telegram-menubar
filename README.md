@@ -4,8 +4,8 @@ Fork **non officiel** du client Telegram natif pour macOS : barre de menus, Dock
 et mises à jour personnalisées avec sauvegarde. La session App Store est destinée à être reprise sur une
 copie privée du profil, puis vérifiée avant le remplacement de l’application installée.
 
-**État : code et tests ciblés disponibles ; compilation complète et migration de session non encore validées.**
-Les identifiants API personnels sont nécessaires avant la première construction.
+**État : compilation arm64 et premier DMG 13.1.0-r1 vérifiés ; migration de session en cours de validation.**
+Les identifiants API personnels restent locaux et sont nécessaires pour construire votre propre copie.
 
 [Guide français : installation, identifiants et mises à jour](menubar/README.fr.md) ·
 [Fork public](https://github.com/o-Oby/telegram-menubar) ·

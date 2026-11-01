@@ -122,6 +122,95 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual(self.builds, 2)
         self.assert_unchanged()
 
+    def test_installation_only_changes_reuse_original_delivery_without_rewriting_provenance(self):
+        directory = self.run_update()
+        manifest = directory / "delivery.json"
+        original_manifest = manifest.read_bytes()
+        original_dmg = next(directory.glob("*.dmg")).read_bytes()
+        for path in update.INSTALLATION_ONLY_PATHS:
+            self.put(self.repo, path, "installation tooling fixture\n")
+        self.commit(self.repo, "Fix installer and its documentation")
+        update.git(self.repo, "push", "origin", update.BRANCH)
+        head = update.git(self.repo, "rev-parse", "HEAD")
+        release = update.read_release(self.repo)
+        self.assertNotEqual(head, self.head)
+        self.assertFalse(update.valid_delivery(directory, release, head))
+        self.assertTrue(update.reusable_delivery(self.repo, directory, release, head))
+        installed = []
+        self.assertEqual(self.run_update(install=installed.append), directory)
+        self.assertEqual(installed, [directory])
+        self.assertEqual(self.builds, 1)
+        self.assertEqual(manifest.read_bytes(), original_manifest)
+        self.assertEqual(next(directory.glob("*.dmg")).read_bytes(), original_dmg)
+        self.assertEqual(json.loads(manifest.read_bytes())["sourceCommit"], self.head)
+        self.assertEqual(update.read_release(self.repo)["revision"], 1)
+        self.assert_unchanged(head)
+
+    def test_app_build_configuration_and_release_changes_always_rebuild(self):
+        self.run_update()
+        for index, path in enumerate([
+            "Telegram-Mac/app/AppDelegate.swift",
+            "scripts/menubar/build.sh",
+            "scripts/menubar/prepare-build.py",
+            "scripts/menubar/package-build.py",
+            "scripts/menubar/build-stage.py",
+            "scripts/menubar/make-icon.swift",
+            "configurations/Stable.xcconfig",
+            "packages/ApiCredentials/Sources/ApiCredentials/Config.swift",
+            "menubar/release.json",
+        ], start=1):
+            with self.subTest(path=path):
+                previous_release = update.read_release(self.repo)
+                previous = update.delivery_path(self.repo, previous_release)
+                if path == "menubar/release.json":
+                    value = (self.repo / path).read_text() + "\n"
+                else:
+                    value = "changed build or application fixture\n"
+                self.put(self.repo, path, value)
+                self.commit(self.repo, "Change application or build input")
+                update.git(self.repo, "push", "origin", update.BRANCH)
+                head = update.git(self.repo, "rev-parse", "HEAD")
+                self.assertFalse(update.reusable_delivery(self.repo, previous, previous_release, head))
+                directory = self.run_update()
+                self.assertEqual(self.builds, index + 1)
+                self.assertNotEqual(directory, previous)
+                self.assertTrue(update.valid_delivery(directory, update.read_release(self.repo), update.git(self.repo, "rev-parse", "HEAD")))
+
+    def test_reuse_allowlist_matches_exact_paths(self):
+        directory = self.run_update()
+        for path in [" README.md", "scripts/menubar/test_prepare_build.py", "scripts/menubar/README.md"]:
+            self.put(self.repo, path, "outside explicit allowlist\n")
+        self.commit(self.repo, "Change paths outside installer allowlist")
+        self.assertFalse(update.reusable_delivery(self.repo, directory, update.read_release(self.repo), update.git(self.repo, "rev-parse", "HEAD")))
+
+    def test_nonancestor_source_is_not_reused_even_with_valid_hashes(self):
+        directory = self.run_update()
+        self.put(self.seed, "README.md", "different branch documentation\n")
+        self.commit(self.seed, "Independent source")
+        unrelated = update.git(self.seed, "rev-parse", "HEAD")
+        update.git(self.repo, "fetch", str(self.seed), "HEAD")
+        manifest = json.loads((directory / "delivery.json").read_text())
+        manifest["sourceCommit"] = unrelated
+        update.write_json(directory / "delivery.json", manifest)
+        release = update.read_release(self.repo)
+        self.assertTrue(update.valid_delivery(directory, release, unrelated))
+        self.assertFalse(update.reusable_delivery(self.repo, directory, release, self.head))
+        replacement = self.run_update()
+        self.assertEqual(self.builds, 2)
+        self.assertNotEqual(directory, replacement)
+        self.assertTrue(update.valid_delivery(replacement, update.read_release(self.repo), update.git(self.repo, "rev-parse", "HEAD")))
+
+    def test_installation_only_changes_do_not_allow_reusing_corrupt_artifact(self):
+        directory = self.run_update()
+        self.put(self.repo, "scripts/menubar/install.py", "installer correction\n")
+        self.commit(self.repo, "Fix installer")
+        update.git(self.repo, "push", "origin", update.BRANCH)
+        next(directory.glob("*.dmg")).write_bytes(b"corrupt artifact")
+        self.assertFalse(update.reusable_delivery(self.repo, directory, update.read_release(self.repo), update.git(self.repo, "rev-parse", "HEAD")))
+        replacement = self.run_update()
+        self.assertEqual(self.builds, 2)
+        self.assertTrue(update.valid_delivery(replacement, update.read_release(self.repo), update.git(self.repo, "rev-parse", "HEAD")))
+
     def test_invalid_delivery_json_is_rebuilt(self):
         directory = self.run_update()
         for value in ["[]", "null", "{invalid-json"]:

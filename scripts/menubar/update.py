@@ -17,6 +17,15 @@ BRANCH = "codex/macos-menubar"
 ORIGIN = "https://github.com/o-Oby/telegram-menubar.git"
 UPSTREAM = "https://github.com/TelegramMessenger/telegram-macos.git"
 FEED = "https://mac-updates.telegram.org/updates/versions.xml"
+INSTALLATION_ONLY_PATHS = frozenset({
+    "scripts/menubar/install.py",
+    "scripts/menubar/update.py",
+    "scripts/menubar/test_install.py",
+    "scripts/menubar/test_update.py",
+    "README.md",
+    "menubar/README.fr.md",
+    "Mettre à jour Telegram Menu Bar.command",
+})
 
 
 def git(repository, *args):
@@ -163,6 +172,23 @@ def valid_delivery(directory, release, head):
         return False
 
 
+def reusable_delivery(repository, directory, release, head):
+    try:
+        delivery = json.loads((directory / "delivery.json").read_text())
+        if not isinstance(delivery, dict):
+            return False
+        source = delivery.get("sourceCommit")
+        if not isinstance(source, str) or not re.fullmatch(r"[a-f0-9]{40}", source):
+            return False
+        if not valid_delivery(directory, release, source):
+            return False
+        git(repository, "merge-base", "--is-ancestor", source, head)
+        paths = subprocess.check_output(["git", "-C", str(repository), "diff", "--no-renames", "--name-only", "-z", source, head, "--"], text=True).split("\0")
+        return all(path in INSTALLATION_ONLY_PATHS for path in paths if path)
+    except (OSError, ValueError, TypeError, KeyError, RuntimeError, subprocess.SubprocessError):
+        return False
+
+
 def delivery_path(repository, release):
     return repository / "dist/menubar" / f"v{release['version']}-r{release['revision']}"
 
@@ -221,7 +247,7 @@ def run_update(repository, latest=latest_stable, build=build_candidate, install=
             raise RuntimeError("Retour en arrière automatique refusé.")
         same_version = all(target[key] == current[key] for key in ["version", "build"])
         destination = delivery_path(repository, current)
-        if same_version and valid_delivery(destination, current, head):
+        if same_version and reusable_delivery(repository, destination, current, head):
             log("La livraison courante est déjà construite et vérifiée.")
             if install:
                 install(destination)

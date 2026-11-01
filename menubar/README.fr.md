@@ -5,10 +5,10 @@ Il utilise les sources de [TelegramMessenger/telegram-macos](https://github.com/
 et non celles de Telegram Desktop (`tdesktop`). Le dépôt public est
 [o-Oby/telegram-menubar](https://github.com/o-Oby/telegram-menubar), branche `codex/macos-menubar`.
 
-**État actuel :** le code et les tests ciblés sont en place. La compilation complète de Telegram,
-la création du premier DMG et la reprise de votre session avec le fork ne sont pas encore validées.
-Les identifiants API personnels sont nécessaires pour poursuivre. L’application App Store installée
-et son profil d’origine ne doivent pas être remplacés avant la validation initiale décrite ci-dessous.
+**État actuel :** la compilation complète arm64 et le premier DMG **13.1.0-r1** sont vérifiés,
+y compris la signature ad hoc et les paramètres propres au fork. La reprise de la session reste à valider
+dans l’application. L’application App Store installée et son profil d’origine ne doivent pas être
+remplacés avant la validation initiale décrite ci-dessous.
 
 ## Comportement prévu
 
@@ -73,7 +73,9 @@ Après la compilation, le script **Mettre à jour Telegram Menu Bar.command** au
 1. Construire et vérifier le DMG du fork.
 2. Quitter complètement Telegram, puis sauvegarder l’application et le profil App Store fermé.
 3. Copier le profil complet, y compris ses fichiers cachés et sa clé de base de données chiffrée,
-   dans le dossier privé du fork. Le conteneur App Store d’origine reste intact.
+   dans le dossier privé du fork. Le conteneur App Store d’origine reste intact. Le lien macOS connu
+   `Library/Application Scripts/6N38VWS5BX.ru.keepcoder.Telegram` est conservé sans être suivi dans
+   la sauvegarde, puis remplacé par un dossier local vide uniquement dans la copie privée.
 4. Lancer **Telegram Menu Bar.app** en prévisualisation et vérifier la reprise de session,
    les conversations et le proxy attendu.
 5. Saisir exactement **VALIDER** dans le terminal, après ces vérifications, pour remplacer
@@ -90,13 +92,17 @@ Le code local de verrouillage de Telegram peut être demandé. Aucun secret du t
 La reprise des réglages biométriques et des données locales du portefeuille n’est pas garantie ;
 le profil officiel et sa sauvegarde sont conservés pour permettre un retour en arrière.
 
+L’extension de partage macOS TelegramShare n’est pas embarquée dans cette variante personnelle.
 La compilation est d’abord non signée, puis signée localement de façon ad hoc, sans notarisation Apple.
 macOS peut donc demander une autorisation d’ouverture ou d’accès au conteneur pendant la migration.
 Si le système refuse la lecture du profil App Store, le script doit s’arrêter avant de fermer Telegram.
 Sous macOS 27, l’accès aux données d’autres apps est refusé par défaut et peut se régler dans
 **Confidentialité et sécurité > Fichiers et dossiers > Terminal**. Autoriser l’accès aux données de Telegram
 si cette entrée est proposée, puis relancer la même livraison. Ne pas attendre systématiquement une popup.
-Ne pas déplacer le profil d’origine ni modifier ses droits pour contourner ce contrôle.
+Ne pas déplacer le profil d’origine ni modifier ses droits pour contourner ce contrôle. Si l’autorisation
+ciblée n’est pas proposée, un accès complet au disque temporaire pour Terminal peut être nécessaire,
+avec votre accord. Le conserver jusqu’au remplacement terminé, puis le retirer. Pendant la prévisualisation,
+ne pas rouvrir l’application officielle : le script vérifie encore que son profil est inchangé avant le remplacement.
 
 ## Proxy et Proton
 
@@ -121,7 +127,10 @@ y compris les chemins de recherche manuelle, de téléchargement et d’installa
 personnalisées doivent passer par le script du fork.
 
 Chaque nouvelle compilation reconstruit actuellement les bibliothèques natives et peut être longue ; seule une
-livraison déjà construite et validée est réutilisée. Les prérequis sont Xcode complet avec son composant
+livraison déjà construite et validée est réutilisée. Une correction limitée aux scripts d’installation,
+de mise à jour, à leurs tests ou au guide peut réutiliser le même DMG après vérification de son empreinte
+et de son commit source. Un changement de l’application ou de sa construction impose une nouvelle compilation.
+Les prérequis sont Xcode complet avec son composant
 Metal, CMake, Ninja, Meson, NASM, Yasm, Autoconf, Automake, pkg-config, Rust et Rosetta. Le script récupère
 les sous-modules épinglés et compile les bibliothèques natives avant l’application arm64.
 Les sous-modules `third-party/twidget` et `third-party/widget-sandbox`, réservés aux laboratoires

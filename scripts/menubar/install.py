@@ -18,6 +18,8 @@ from dataclasses import dataclass
 BUNDLE_ID = "fr.oby.telegram-menubar"
 OFFICIAL_ID = "ru.keepcoder.Telegram"
 APP_NAME = "Telegram Menu Bar.app"
+APP_SCRIPTS_LINK = Path("Library/Application Scripts/6N38VWS5BX.ru.keepcoder.Telegram")
+APP_SCRIPTS_TARGET = "../../../../Application Scripts/6N38VWS5BX.ru.keepcoder.Telegram"
 
 
 @dataclass(frozen=True)
@@ -136,7 +138,11 @@ def require_profile_access(path, directory=False):
         raise PermissionError(errno.EACCES, "Lecture du profil refusée", str(path))
 
 
-def profile_valid(path):
+def app_scripts_link(path, entry):
+    return entry.relative_to(path) == APP_SCRIPTS_LINK and os.readlink(entry) == APP_SCRIPTS_TARGET
+
+
+def profile_valid(path, allow_app_scripts_link=False):
     try:
         require_directory(path)
         require_directory(path / "accounts-metadata")
@@ -150,6 +156,8 @@ def profile_valid(path):
             for name in directories + files:
                 entry = Path(root) / name
                 if entry.is_symlink():
+                    if allow_app_scripts_link and app_scripts_link(path, entry):
+                        continue
                     target = os.readlink(entry)
                     if os.path.isabs(target) or os.path.commonpath([str(path), str(entry.resolve())]) != str(path):
                         raise RuntimeError(f"Le profil contient un lien sortant ou absolu : {entry}. La copie privée ne doit pas modifier le profil original.")
@@ -459,7 +467,7 @@ def install_delivery(directory, paths, host):
         if not receipt:
             if paths.profile.exists() or paths.profile.is_symlink() or paths.preview.exists() or paths.preview.is_symlink():
                 raise RuntimeError("Un profil privé ou une prévisualisation existe sans reçu. Ils sont conservés ; vérification manuelle nécessaire.")
-            profile_valid(paths.original_profile)
+            profile_valid(paths.original_profile, allow_app_scripts_link=True)
             host.quit([paths.installed, paths.preview])
             backup, app_hash, profile_hash = make_backup(paths, paths.original_profile, host)
             receipt = {
@@ -479,8 +487,16 @@ def install_delivery(directory, paths, host):
                 raise RuntimeError("Le profil privé précédemment lancé a disparu. Aucune copie ancienne ne sera rétablie automatiquement.")
             temporary = paths.support / (".profile-" + uuid.uuid4().hex)
             verified_copy(backup / "profile", temporary, host)
+            scripts = temporary / APP_SCRIPTS_LINK
+            if scripts.is_symlink() and app_scripts_link(temporary, scripts):
+                no_symlink_path(scripts.parent)
+                scripts.unlink()
+                scripts.mkdir(mode=0o700)
+            profile_valid(temporary)
+            receipt["privateProfileSha256"] = tree_hash(temporary)
+            write_json(paths.receipt, receipt)
             temporary.rename(paths.profile)
-        elif not receipt.get("previewLaunched") and tree_hash(paths.profile) != metadata["profileSha256"]:
+        elif not receipt.get("previewLaunched") and tree_hash(paths.profile) != receipt.get("privateProfileSha256", metadata["profileSha256"]):
             raise RuntimeError("Le profil privé incomplet diffère de la sauvegarde. Il est conservé pour vérification.")
         profile_valid(paths.profile)
         if paths.preview.exists() or paths.preview.is_symlink():
