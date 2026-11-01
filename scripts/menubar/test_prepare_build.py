@@ -156,6 +156,8 @@ class BuildPreparationTests(unittest.TestCase):
         app = self.base / "Telegram Menu Bar.app"
         resources = app / "Contents/Resources"
         resources.mkdir(parents=True)
+        (resources / "AppIcon.icns").write_bytes(b"native-icon-fixture")
+        (resources / "PersonalMenuBar.icns").write_bytes(b"previous-custom-icon")
         executable = app / "Contents/MacOS/Telegram"
         executable.parent.mkdir()
         executable.write_bytes(b"\xcf\xfa\xed\xfe" + b"fixture-not-executable")
@@ -171,13 +173,15 @@ class BuildPreparationTests(unittest.TestCase):
             calls.append(values)
             if values[:2] == ["/usr/bin/lipo", "-archs"]:
                 return "arm64"
-            if values[0] == "/usr/bin/iconutil":
-                pathlib.Path(values[-1]).write_bytes(b"icns-test")
             if values[:2] == ["/usr/bin/hdiutil", "create"]:
                 pathlib.Path(values[-1]).write_bytes(b"dmg-test")
             return ""
         with patch.object(package, "run", fake_run), contextlib.redirect_stdout(io.StringIO()):
             package.finish(self.root, app, output)
+        packaged_info = plistlib.loads((app / "Contents/Info.plist").read_bytes())
+        self.assertEqual(packaged_info["CFBundleIconName"], "AppIcon")
+        self.assertEqual((resources / "AppIcon.icns").read_bytes(), b"native-icon-fixture")
+        self.assertFalse((resources / "PersonalMenuBar.icns").exists())
         manifest = json.loads((output / "delivery.json").read_text())
         self.assertEqual(manifest["sourceCommit"], self.commit)
         self.assertEqual(manifest["architecture"], "arm64")

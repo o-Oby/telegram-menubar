@@ -150,6 +150,74 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(installer.tree_hash(self.paths.installed), self.original_app)
         self.assertEqual(installer.tree_hash(self.paths.original_profile), self.original_profile)
 
+    def test_legacy_delivery_without_compilation_commit_remains_compatible(self):
+        receipt = self.run_install(fresh=True)
+        self.assertNotIn("compiledSourceCommit", receipt)
+        self.assertNotIn("PersonalMenuBarCompiledSourceCommit", installer.app_info(self.paths.installed))
+
+    def test_repackaged_revision_records_original_compilation_commit(self):
+        self.run_install(fresh=True)
+        (self.paths.profile / "session").write_text("keep")
+        profile_hash = installer.tree_hash(self.paths.profile)
+        self.manifest.update(revision=2, sourceCommit="d" * 40, compiledSourceCommit="a" * 40)
+        self.manifest["artifacts"][0]["name"] = "Telegram-Menu-Bar-13.1.0-r2-arm64.dmg"
+        filename = self.source / "Contents/Info.plist"
+        info = plistlib.loads(filename.read_bytes())
+        info.update(PersonalMenuBarRevision=2, PersonalMenuBarSourceCommit="d" * 40, PersonalMenuBarCompiledSourceCommit="a" * 40)
+        filename.write_bytes(plistlib.dumps(info))
+        self.save_delivery()
+        receipt = self.run_install(fresh=True)
+        self.assertEqual(receipt["revision"], 2)
+        self.assertEqual(receipt["sourceCommit"], "d" * 40)
+        self.assertEqual(receipt["compiledSourceCommit"], "a" * 40)
+        self.assertEqual(installer.tree_hash(self.paths.profile), profile_hash)
+        self.assertEqual(installer.tree_hash(Path(receipt["backup"]) / "profile"), profile_hash)
+        self.assertEqual(self.run_install(fresh=True)["compiledSourceCommit"], "a" * 40)
+        self.assertEqual(len(self.backups()), 2)
+
+    def test_invalid_compilation_commit_in_manifest_is_rejected_before_quit(self):
+        for compiled in [None, 123, "not-a-commit", "A" * 40, "a" * 39]:
+            with self.subTest(compiled=compiled):
+                self.manifest["compiledSourceCommit"] = compiled
+                self.save_delivery()
+                with self.assertRaisesRegex(RuntimeError, "sources compilées invalide.*livraison"):
+                    self.run_install(fresh=True)
+                self.assertNotIn("quit", self.host.events)
+                self.assertFalse(self.backups())
+        self.assert_originals()
+
+    def test_invalid_compilation_commit_in_bundle_is_rejected_before_quit(self):
+        filename = self.source / "Contents/Info.plist"
+        info = plistlib.loads(filename.read_bytes())
+        for compiled in [123, "not-a-commit", "A" * 40, "a" * 39]:
+            with self.subTest(compiled=compiled):
+                info["PersonalMenuBarCompiledSourceCommit"] = compiled
+                filename.write_bytes(plistlib.dumps(info))
+                with self.assertRaisesRegex(RuntimeError, "sources compilées invalide.*application"):
+                    self.run_install(fresh=True)
+                self.assertNotIn("quit", self.host.events)
+                self.assertFalse(self.backups())
+        self.assert_originals()
+
+    def test_compilation_commit_must_match_between_manifest_and_bundle(self):
+        filename = self.source / "Contents/Info.plist"
+        info = plistlib.loads(filename.read_bytes())
+        for manifest_commit, bundle_commit in [("a" * 40, "b" * 40), ("a" * 40, None), (None, "a" * 40)]:
+            with self.subTest(manifest_commit=manifest_commit, bundle_commit=bundle_commit):
+                self.manifest.pop("compiledSourceCommit", None)
+                info.pop("PersonalMenuBarCompiledSourceCommit", None)
+                if manifest_commit:
+                    self.manifest["compiledSourceCommit"] = manifest_commit
+                if bundle_commit:
+                    info["PersonalMenuBarCompiledSourceCommit"] = bundle_commit
+                filename.write_bytes(plistlib.dumps(info))
+                self.save_delivery()
+                with self.assertRaisesRegex(RuntimeError, "ne correspond pas au manifest"):
+                    self.run_install(fresh=True)
+                self.assertNotIn("quit", self.host.events)
+                self.assertFalse(self.backups())
+        self.assert_originals()
+
     def test_fresh_install_backs_up_only_application_and_launches_login_without_confirmation(self):
         receipt = self.run_install(fresh=True)
         self.assertEqual(receipt["status"], "validated")

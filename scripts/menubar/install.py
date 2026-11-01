@@ -189,6 +189,10 @@ def read_delivery(directory):
     for key in ["sourceCommit", "upstreamCommit"]:
         if not re.fullmatch(r"[a-f0-9]{40}", str(delivery.get(key, ""))):
             raise RuntimeError("Commit de livraison invalide.")
+    if "compiledSourceCommit" in delivery:
+        compiled = delivery["compiledSourceCommit"]
+        if not isinstance(compiled, str) or not re.fullmatch(r"[a-f0-9]{40}", compiled):
+            raise RuntimeError("Commit des sources compilées invalide dans la livraison.")
     artifacts = delivery.get("artifacts")
     if not isinstance(artifacts, list) or not artifacts:
         raise RuntimeError("Livraison sans artefact.")
@@ -247,6 +251,10 @@ def verify_personal(app, host, delivery=None):
         raise RuntimeError("Les identifiants API personnels embarqués sont invalides.")
     if not re.fullmatch(r"[a-fA-F0-9]{32}", str(config.get("api_hash", ""))):
         raise RuntimeError("Les identifiants API personnels embarqués sont invalides.")
+    if "PersonalMenuBarCompiledSourceCommit" in info:
+        compiled = info["PersonalMenuBarCompiledSourceCommit"]
+        if not isinstance(compiled, str) or not re.fullmatch(r"[a-f0-9]{40}", compiled):
+            raise RuntimeError("Commit des sources compilées invalide dans l’application.")
     if delivery:
         expected = {
             "CFBundleShortVersionString": delivery["version"],
@@ -255,6 +263,8 @@ def verify_personal(app, host, delivery=None):
             "PersonalMenuBarUpstreamCommit": delivery["upstreamCommit"],
             "PersonalMenuBarRevision": delivery["revision"],
         }
+        if "compiledSourceCommit" in delivery or "PersonalMenuBarCompiledSourceCommit" in info:
+            expected["PersonalMenuBarCompiledSourceCommit"] = delivery.get("compiledSourceCommit")
         if any(info.get(key) != value for key, value in expected.items()):
             raise RuntimeError("Le binaire ne correspond pas au manifest de livraison.")
     host.verify_signature(app)
@@ -399,6 +409,8 @@ def replace_application(paths, candidate, delivery, candidate_hash, backup, old_
         }
         if old_receipt.get("installationMode") == "fresh":
             receipt["installationMode"] = "fresh"
+        if "compiledSourceCommit" in delivery:
+            receipt["compiledSourceCommit"] = delivery["compiledSourceCommit"]
         write_json(paths.receipt, receipt)
         launch_attempted = True
         host.launch(paths.installed, preview=False)

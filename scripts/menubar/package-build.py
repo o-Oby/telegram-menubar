@@ -43,6 +43,8 @@ def finish(root, app, output):
         "PersonalMenuBarSourceCommit": metadata["sourceCommit"],
         "PersonalMenuBarRevision": metadata["revision"],
     }
+    if "compiledSourceCommit" in metadata:
+        expected["PersonalMenuBarCompiledSourceCommit"] = metadata["compiledSourceCommit"]
     if any(info.get(key) != value for key, value in expected.items()):
         raise ValueError("Le bundle compilé ne correspond pas à la variante personnelle épinglée")
     if info.get("SUFeedURL") or info.get("SUEnableAutomaticChecks") is not False or info.get("SUAutomaticallyUpdate") is not False:
@@ -51,12 +53,15 @@ def finish(root, app, output):
         raise ValueError("L’exécutable livré n’est pas exclusivement arm64")
     resources = app / "Contents/Resources"
     shutil.copy2(private / "menubar-config.json", resources / "menubar-config.json")
-    iconset = private / "PersonalMenuBar.iconset"
-    run("/usr/bin/xcrun", "swift", root / "scripts/menubar/make-icon.swift", iconset)
-    run("/usr/bin/iconutil", "-c", "icns", iconset, "-o", resources / "PersonalMenuBar.icns")
-    for key in ("CFBundleIconName", "CFBundleIcons"):
-        info.pop(key, None)
-    info["CFBundleIconFile"] = "PersonalMenuBar.icns"
+    native_icon = resources / "AppIcon.icns"
+    if native_icon.is_symlink() or not native_icon.is_file():
+        raise ValueError("L’icône native Telegram est absente du bundle")
+    previous_icon = resources / "PersonalMenuBar.icns"
+    if previous_icon.exists() or previous_icon.is_symlink():
+        previous_icon.unlink()
+    info.pop("CFBundleIcons", None)
+    info["CFBundleIconFile"] = "AppIcon"
+    info["CFBundleIconName"] = "AppIcon"
     info_path.write_bytes(plistlib.dumps(info, sort_keys=False))
     entries = list(app.rglob("*"))
     for entry in entries:

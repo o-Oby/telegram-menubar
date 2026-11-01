@@ -161,7 +161,8 @@ def prepare(root, credentials, source_commit):
     info.update({
         "CFBundleDisplayName": PRODUCT_NAME,
         "CFBundleName": PRODUCT_NAME,
-        "CFBundleIconFile": "PersonalMenuBar.icns",
+        "CFBundleIconFile": "AppIcon",
+        "CFBundleIconName": "AppIcon",
         "PersonalMenuBar": True,
         "PersonalMenuBarRevision": release["revision"],
         "PersonalMenuBarSourceCommit": source_commit,
@@ -169,7 +170,7 @@ def prepare(root, credentials, source_commit):
         "SUEnableAutomaticChecks": False,
         "SUAutomaticallyUpdate": False,
     })
-    for key in ("SUFeedURL", "SUPublicDSAKeyFile", "SUPublicEDKey", "CFBundleIconName", "CFBundleIcons"):
+    for key in ("SUFeedURL", "SUPublicDSAKeyFile", "SUPublicEDKey", "CFBundleIcons"):
         info.pop(key, None)
     info_path.write_bytes(plistlib.dumps(info, sort_keys=False))
     (root / "Telegram.xcodeproj/project.pbxproj").write_text(updated)
